@@ -142,7 +142,7 @@ function getFirestoreLazy() {
 async function storeMatchSummary(summaryData) {
     // getFirestore, collection, addDoc, serverTimestamp は
     // ファイルの冒頭でインポートされている必要があります。
-    const db = getFirestoreLazy();
+    const db = getFirestore();
     const docRef = await addDoc(collection(db, SUMMARY_COLLECTION_NAME), {
         ...summaryData,
         timestamp: serverTimestamp(),
@@ -206,7 +206,7 @@ const FRONTLINE_ROTATION = [
 async function storeDataToFirestore(data) {
     let successCount = 0;
     let failCount = 0;
-    const db = getFirestoreLazy(); // FirebaseのgetFirestoreLazy();関数が利用可能であると仮定
+    const db = getFirestore(); // FirebaseのgetFirestore()関数が利用可能であると仮定
 
     // キャラクターごとにデータを保存するループ
     for (const [name, record] of Object.entries(data)) {
@@ -237,7 +237,7 @@ async function storeDataToFirestore(data) {
 async function strategistSearchCommand(targetStrategistName) {
     
     // 1. データベースから指定された軍師のレコードのみを取得
-    const db = getFirestoreLazy();
+    const db = getFirestore();
     const resultsCol = collection(db, RESULT_COLLECTION_NAME);
     
     // ACT記録ドキュメントから、名前と軍師フラグで検索
@@ -381,7 +381,7 @@ function getCurrentFrontlineMap() {
  * @returns {Promise<string|null>} キャラクター名
  */
 async function getCharacterNameByUserId(userId) {
-    // 【重要】関数内で const db = getFirestoreLazy(); を書かないでください！
+    // 【重要】関数内で const db = getFirestore() を書かないでください！
     // グローバルの db 変数を使います。
     
     const docRef = doc(db, LINK_COLLECTION_NAME, userId); 
@@ -702,7 +702,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
 
         try {
-            await addDoc(collection(getFirestoreLazy(), RESULT_COLLECTION_NAME), finalRecord);
+            await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
             successCount++;
         } catch (e) {
             console.error(`保存エラー (${name}):`, e);
@@ -2598,13 +2598,19 @@ if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
     console.error("重大なエラー: Discordボットトークンが設定されていません。`token`変数を実際のトークンに置き換える必要があります。");
 } else {
     // ログイン処理を実行
+    setTimeout(() => {
+    
+    console.log('--- START: Discord Login Process ---');
     client.login(token)
-    .then(() => {
-        console.log('--- SUCCESS: Discord Login Sent ---');
-    })
-    .catch(error => {
-        console.error('--- FATAL: Discord Login Failed ---', error);
-        // ★重要: ログインに失敗した場合はプロセスを終了させ、Renderに再起動を促す
-        process.exit(1); 
-    });
+        .then(() => {
+            // ログイン成功後、メッセージ出力
+            console.log('--- SUCCESS: Discord Login Sent ---');
+        })
+        .catch(error => {
+            // ログイン自体が失敗した場合、強制終了してRenderに再起動を促す
+            console.error('--- FATAL: Discord Login Failed ---', error);
+            process.exit(1); 
+        });
+
+}, 2000);
 }
