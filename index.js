@@ -711,7 +711,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
         const strategistEmoji = JOB_EMOJIS[strategistJobCode] || '❓';
         embed.addFields({
             name: `────────────────────`,
-            value: `**👑 ストラテジスト: ${strategistRecord.name} ${strategistEmoji} [${strategistRecord.job}]**`,
+            value: `**👑 軍師: ${strategistRecord.name} ${strategistEmoji} [${strategistRecord.job}]**`,
             inline: false
         });
     }
@@ -757,7 +757,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
         
         // ★★★ 軍師マークを追加 ★★★
         if (player.isStrategist) {
-            allyMark = '🛡️'; 
+            allyMark = '🚩'; 
         }
 
         embed.addFields({
@@ -899,7 +899,7 @@ async function findOrCreatePrivateCharacterChannel(guild, characterName, charact
                 await channel.send({
                     content: `🎉 ${characterRole.toString()} さんへようこそ！\n` +
                              `ここは、あなた専用のプライベートチャンネル（**${displayChannelName}**）です。\n` +
-                             `このチャンネルは、**${characterRole.name}** ロールを持っているメンバー（あなた自身）だけが見ることができます。\n` +
+                             `このチャンネルは、**${characterRole.name}** ロールを持っているメンバー（あなた自身）とサーバー管理者だけが見ることができます。\n` +
                              `フロントラインのリザルト記録やメモにご活用ください。`
                 });
             }
@@ -915,9 +915,8 @@ async function findOrCreatePrivateCharacterChannel(guild, characterName, charact
 
 
 // --- 🔥 日次自動アナウンスのスケジューリングと実行ロジック ---
-
 /**
- * 毎日0:00 JSTにアナウンスを実行するスケジューラを起動します。
+ * 毎日0:00 JSTにアナウンスを実行するスケジューラを起動します。が、うまくいってないです
  */
 function startDailyScheduler() {
     // 1. 次のJST 0:00までの時間を計算
@@ -1048,15 +1047,6 @@ function capitalize(str) {
  * @returns {string} フィールド名
  */
 function determineFieldByScore(winningScore) {
-    // ユーザー指定の基準:
-    // 2400点 -> 外縁遺跡群 (制圧戦)
-    // 2000点 -> フィールド・オブ・グローリー (砕氷戦)
-    // 1400点 -> オンサル・ハカイル (終節戦)
-    // 700点  -> シールロック (争奪戦)
-
-    // ポイントが高い順に判定することで、条件被りを防ぎます
-    // (例: 2400点取った場合、>700の条件にも当てはまってしまうため)
-    
     if (winningScore >= 2400) {
         return '外縁遺跡群　制圧戦';
     } else if (winningScore >= 2000) {
@@ -1298,7 +1288,6 @@ const commands = [
 },
 ];
 
-// ... (getLodestoneCharacterInfo 関数は変更なし) ...
 async function getLodestoneCharacterInfo(lodestoneId) {
     // LodestoneのHTML構造の変更に耐えるため、cheerioの利用を推奨します。
     // Node.js環境を想定し、ここでは便宜的にrequireしますが、本来はファイル冒頭でインポートすべきです。
@@ -1410,8 +1399,8 @@ client.on('ready', async () => {
         console.error('スラッシュコマンドの登録中にエラーが発生しました:', error);
     }
     
-    // 🔥 日次スケジューラを起動
-    startDailyScheduler();
+    // 🔥 日次スケジューラを起動 だが、BOT再起動時に上手くいかないため一旦コメントアウト
+    // startDailyScheduler();
 });
 
 // スラッシュコマンドが使用されたときのイベント
@@ -1422,7 +1411,7 @@ client.on('interactionCreate', async (interaction) => {
     const userId = interaction.user.id;
     const userDocRef = doc(db, LINK_COLLECTION_NAME, userId);
     
-    // --- /link の処理 (埋め込みとアイコン画像を追加) --- ★修正箇所
+    // --- /link の処理 (埋め込みとアイコン画像を追加) --- 
     if (commandName === 'link') {
         await interaction.deferReply({ ephemeral: false });
 
@@ -1504,14 +1493,14 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('✅ Lodestone 紐づけ完了')
                     .setDescription(`Discordユーザー **${discordUser.tag}** のFF14キャラクター情報が登録されました。`)
                     .setURL(`https://jp.finalfantasyxiv.com/lodestone/character/${lodestoneId}/`)
-                    .setThumbnail(infoResult.iconUrl) // ★Lodestoneから取得したアイコン画像を設定
+                    .setThumbnail(infoResult.iconUrl) // ★Lodestoneから取得したアイコン画像を設定しようと思ったけど失敗してる　でも動作には問題ないから放置
                     .addFields(
                         { name: 'キャラクター名', value: infoResult.charName, inline: true },
                         { name: 'ワールド/DC', value: `${infoResult.world} (${infoResult.dataCenter})`, inline: true },
                         { name: 'Lodestone ID', value: lodestoneId, inline: true },
                         { name: 'ロール付与ステータス', value: roleMessage, inline: false },
                     )
-                    .setFooter({ text: 'リザルトを記録するには、新しく追加された /record コマンドを使用してください。' })
+                    .setFooter({ text: 'リザルトを記録するには、/record コマンドを、actを用いた記録には/act_recordを使用してください。' })
                     .setTimestamp();
 
                 if (channelMention) {
@@ -2519,7 +2508,7 @@ if (commandName === 'record') {
 
             if (!attachmentContent) {
                 // ファイルが見つからなかった場合、全員に見える形でエラーを返す
-                await interaction.editReply({ content: "エラー: 添付ファイルが見つかりませんでした。コマンド実行後、すぐにCSV/TXTファイルをアップロードしてください。" });
+                await interaction.editReply({ content: "エラー: CSVファイルが見つかりませんでした。コマンド実行前に、CSV/TXTファイルをアップロードしてください。" });
                 return;
             }
 
