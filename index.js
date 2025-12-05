@@ -2561,12 +2561,17 @@ app.listen(port, () => {
 
 if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
     // ユーザーがトークンを置き換えるのを忘れた場合に分かりやすい警告を出力
+    console.log('--- START: Discord Login Process ---');
     console.error("重大なエラー: Discordボットトークンが設定されていません。`token`変数を実際のトークンに置き換える必要があります。");
 } else {
     // ログイン処理を実行
     client.login(token)
-        .catch(error => {
-            console.error("ログイン中にエラーが発生しました:", error);
-            console.error("【注意】これはDiscord APIサーバーの一時的な問題（HTTP 500）またはネットワークの問題である可能性が高いです。数分待って再試行してください。");
-        });
+    .then(() => {
+        console.log('--- SUCCESS: Discord Login Sent ---');
+    })
+    .catch(error => {
+        console.error('--- FATAL: Discord Login Failed ---', error);
+        // ★重要: ログインに失敗した場合はプロセスを終了させ、Renderに再起動を促す
+        process.exit(1); 
+    });
 }
