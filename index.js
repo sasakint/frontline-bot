@@ -16,6 +16,17 @@ const firebaseFirestoreModule = require('firebase/firestore');
 let userId = 'anonymous'; 
 let isAuthReady = true;
 
+// 予期せぬ同期的なエラーを捕捉し、Botのプロセスが終了する前にログを出力する
+process.on('uncaughtException', error => {
+    console.error('@@@ 究極のクラッシュ捕捉: 同期エラー @@@', error.stack);
+    process.exit(1); 
+});
+
+// 予期せぬ非同期的なエラーを捕捉
+process.on('unhandledRejection', error => {
+    console.error('@@@ 究極のクラッシュ捕捉: 非同期エラー @@@', error.stack);
+});
+
 // 関数をモジュールから抽出
 const initializeApp = firebaseAppModule.initializeApp;
 const { 
