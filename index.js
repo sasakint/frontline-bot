@@ -1453,6 +1453,7 @@ client.on('ready', async () => {
 // スラッシュコマンドが使用されたときのイベント
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
+    await interaction.deferReply({ ephemeral: false });
 
     const { commandName } = interaction;
     const userId = interaction.user.id;
