@@ -102,6 +102,39 @@ const clientId = '1443955344081555458'; // ★ご指定いただいた正しい�
 // ----------------------------------------------------------------
 
 /**
+ * 初回呼び出し時にFirebaseを初期化し、Firestoreインスタンスを返す
+ * @returns {Firestore} Firestoreインスタンス
+ */
+function getFirestoreLazy() {
+    // すでに初期化済みであれば、そのままFirestoreインスタンスを返す
+    if (firebaseApp && isAuthReady) {
+        return getFirestore(firebaseApp);
+    }
+    
+    // 未初期化の場合、環境変数を使って初期化する
+    const firebaseConfig = {
+        apiKey: process.env.FIREBASE_API_KEY,
+        authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+        appId: process.env.FIREBASE_APP_ID,
+        measurementId: process.env.FIREBASE_MEASUREMENT_ID, 
+    };
+
+    try {
+        firebaseApp = initializeApp(firebaseConfig);
+        isAuthReady = true;
+        console.log('--- LAZY SUCCESS: Firebase 遅延初期化完了 ---');
+        return getFirestore(firebaseApp);
+    } catch (error) {
+        console.error('--- LAZY FATAL: Firebase 初期化失敗 ---', error.message);
+        // 初期化失敗時はFirestoreインスタンスを返さず、後続処理でエラーを発生させる
+        throw new Error("Firebaseの環境設定が不正です。Renderの環境変数を確認してください。");
+    }
+}
+
+/**
  * 試合概要をFirestoreに保存する
  * @param {Object} summaryData - 試合概要データ
  * @returns {Promise<string>} 割り当てられた試合ID (docId)
@@ -109,7 +142,7 @@ const clientId = '1443955344081555458'; // ★ご指定いただいた正しい�
 async function storeMatchSummary(summaryData) {
     // getFirestore, collection, addDoc, serverTimestamp は
     // ファイルの冒頭でインポートされている必要があります。
-    const db = getFirestore();
+    const db = getFirestoreLazy();
     const docRef = await addDoc(collection(db, SUMMARY_COLLECTION_NAME), {
         ...summaryData,
         timestamp: serverTimestamp(),
@@ -173,7 +206,7 @@ const FRONTLINE_ROTATION = [
 async function storeDataToFirestore(data) {
     let successCount = 0;
     let failCount = 0;
-    const db = getFirestore(); // FirebaseのgetFirestore()関数が利用可能であると仮定
+    const db = getFirestoreLazy(); // FirebaseのgetFirestoreLazy();関数が利用可能であると仮定
 
     // キャラクターごとにデータを保存するループ
     for (const [name, record] of Object.entries(data)) {
@@ -204,7 +237,7 @@ async function storeDataToFirestore(data) {
 async function strategistSearchCommand(targetStrategistName) {
     
     // 1. データベースから指定された軍師のレコードのみを取得
-    const db = getFirestore();
+    const db = getFirestoreLazy();
     const resultsCol = collection(db, RESULT_COLLECTION_NAME);
     
     // ACT記録ドキュメントから、名前と軍師フラグで検索
@@ -348,7 +381,7 @@ function getCurrentFrontlineMap() {
  * @returns {Promise<string|null>} キャラクター名
  */
 async function getCharacterNameByUserId(userId) {
-    // 【重要】関数内で const db = getFirestore() を書かないでください！
+    // 【重要】関数内で const db = getFirestoreLazy(); を書かないでください！
     // グローバルの db 変数を使います。
     
     const docRef = doc(db, LINK_COLLECTION_NAME, userId); 
@@ -669,7 +702,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
 
         try {
-            await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
+            await addDoc(collection(getFirestoreLazy(), RESULT_COLLECTION_NAME), finalRecord);
             successCount++;
         } catch (e) {
             console.error(`保存エラー (${name}):`, e);
