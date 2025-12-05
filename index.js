@@ -2,6 +2,9 @@
 const { Client, GatewayIntentBits, Partials, Routes, REST, ApplicationCommandOptionType, ChannelType, EmbedBuilder } = require('discord.js'); // ★ ChannelTypeを追加
 const { parse } = require('csv-parse/sync');
 
+const express = require('express');
+const app = express();
+
 // --- ウェブスクレイピング関連のインポート ---
 const axios = require('axios'); // LodestoneのHTMLを取得するために使用
 const cheerio = require('cheerio'); // HTML解析に使用 // ★追加
@@ -2546,6 +2549,15 @@ if (commandName === 'record') {
     }
 });    
 
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Discord Bot is running and connected.');
+});
+
+app.listen(port, () => {
+    console.log(`Web server listening on port ${port}`);
+});
 
 if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
     // ユーザーがトークンを置き換えるのを忘れた場合に分かりやすい警告を出力
