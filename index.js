@@ -1096,7 +1096,7 @@ function capitalize(str) {
 function determineFieldByScore(winningScore) {
     if (winningScore >= 2400) {
         return '外縁遺跡群　制圧戦';
-    } else if (winningScore >= 2000) {
+    } else if (winningScore >= 1600) {
         return 'フィールド・オブ・グローリー　砕氷戦';
     } else if (winningScore >= 1400) {
         return 'オンサル・ハカイル　終節戦';
@@ -2624,4 +2624,5 @@ if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
         });
 
 }, 2000);
+
 }
