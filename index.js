@@ -109,7 +109,7 @@ const client = new Client({
 
 // Discord Bot TokenとClientID
 const token = process.env.DISCORD_BOT_TOKEN;
-const clientId = '1443955344081555458'; // ★ご指定いただいた正しいクライアントIDに修正しました
+const clientId = '1443955344081555458'; 
 // ----------------------------------------------------------------
 
 /**
@@ -1453,7 +1453,6 @@ client.on('ready', async () => {
 // スラッシュコマンドが使用されたときのイベント
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
-    await interaction.deferReply({ ephemeral: false });
 
     const { commandName } = interaction;
     const userId = interaction.user.id;
@@ -1674,7 +1673,7 @@ if (commandName === 'unlink') {
         }
     }
 
-if (commandName === 'status') {
+    if (commandName === 'status') {
         // Ephemeral: false（全員に見える）で応答を待機
         await interaction.deferReply({ ephemeral: false });
         
