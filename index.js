@@ -629,6 +629,12 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
     // ポイントに基づいてフィールド名を決定
     const fieldName = determineFieldByScore(teamPoints[0].points);
+    if (fieldName === 'FIELD_NEEDS_SELECTION') {
+    return {
+        content: '⚠️ **1位の得点が1400点でした。**\nフィールドを選択してください。'
+    };
+}
+
     console.log(`[デバッグ] 優勝ポイント: ${teamPoints[0].points}, 判定フィールド: ${fieldName}`);
 
 
@@ -1102,7 +1108,7 @@ function determineFieldByScore(winningScore) {
     } else if (winningScore >= 1600) {
         return 'フィールド・オブ・グローリー　砕氷戦';
     } else if (winningScore >= 1400) {
-        return 'オンサル・ハカイル　終節戦';
+        return 'FIELD_NEEDS_SELECTION';
     } else if (winningScore >= 700) {
         return 'シールロック　争奪戦';
     } else {
