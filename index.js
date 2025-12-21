@@ -207,6 +207,7 @@ const FRONTLINE_ROTATION = [
     { name: 'シールロック（争奪戦）', short: '争奪戦' },    // Index 1
     { name: 'フィールド・オブ・グローリー（砕氷戦）', short: '砕氷戦' }, // Index 2
     { name: 'オンサル・ハカイル（終節戦）', short: '終節戦' }  // Index 3
+    { name: 'ウォーコー・チーテ（演習戦）', short: '演習戦' }  // Index 4
 ];
 
 /**
@@ -2626,3 +2627,4 @@ if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
 }, 2000);
 
 }
+
