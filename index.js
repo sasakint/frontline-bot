@@ -2539,7 +2539,7 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (commandName === 'delete_match') {
         const matchId = interaction.options.getString('match_id');
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ ephemeral: false });
 
         try {
             const matchRef = doc(db, 'match_summaries', matchId);
