@@ -1622,6 +1622,7 @@ client.on('ready', async () => {
 
 // スラッシュコマンドが使用されたときのイベント
 client.on('interactionCreate', async (interaction) => {
+    console.log(`[Interaction] ID: ${interaction.id}, Type: ${interaction.type}, User: ${interaction.user.tag}`);
     if (!interaction.isCommand()) return;
 
     const { commandName } = interaction;
@@ -2799,6 +2800,7 @@ client.on('interactionCreate', async (interaction) => {
 
             // 4. 結果を返信 (ボタンまたはリザルトEmbed)
             await interaction.editReply(responseMessage);
+            console.log('  -> Initial response sent (may contain buttons).');
 
         } catch (error) {
             console.error('act_record 処理エラー:', error);
@@ -2815,58 +2817,69 @@ client.on('interactionCreate', async (interaction) => {
         const userId = interaction.user.id;
         const customId = interaction.customId;
 
-        // 判定対象のIDリスト
-        const isFieldButton = customId === 'field_select_onsal' || customId === 'field_select_warco';
-        if (!isFieldButton) return;
+        console.log(`[Button] ID: ${customId}, User: ${userId}`);
 
-        // 1. 一時保存データの取得
-        const pending = pendingActRecords.get(userId);
-
-        // 2. データがない場合や本人でない場合の処理 (速やかに update/reply)
-        if (!pending) {
-            return await interaction.update({
-                content: '❌ エラー: 記録データが期限切れ、または見つかりません。',
-                components: []
-            }).catch(() => { });
-        }
-
-        if (userId !== pending.userId) {
-            return await interaction.reply({
-                content: '❌ この操作は記録を開始した本人のみが行えます。',
-                flags: 64 // ephemeral
-            }).catch(() => { });
-        }
-
-        // 3. フィールド確定処理
-        const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
+        // 判定対象のボタンかチェック
+        if (!['field_select_onsal', 'field_select_warco'].includes(customId)) return;
 
         try {
-            // ★最優先: update() を呼んでDiscordに「受け取った」と伝える。
-            // これにより、この後の重い continueActRecord 処理中に3秒期限が切れるのを防ぎます。
+            // 1. 一時保存データの取得
+            const pending = pendingActRecords.get(userId);
+
+            // 2. データの存在確認（ここで落ちないようにガード）
+            if (!pending) {
+                console.warn(`  !! No pending data found for user ${userId}`);
+                return await interaction.update({ 
+                    content: '❌ エラー: 記録データが期限切れか見つかりません。', 
+                    components: [] 
+                });
+            }
+
+            // 3. 本人確認
+            if (userId !== pending.userId) {
+                console.warn(`  !! User mismatch: Pending=${pending.userId}, Interaction=${userId}`);
+                return await interaction.reply({
+                    content: '❌ 本人のみが操作できます。',
+                    flags: 64
+                });
+            }
+
+            // 4. フィールド名の決定
+            const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
+
+            // 5. 3秒ルール回避のための即時更新
+            console.log(`  -> Field selected: ${fieldName}. Updating UI...`);
             await interaction.update({
-                content: `✅ **${fieldName}** を選択しました。保存処理を実行中です...`,
+                content: `✅ **${fieldName}** を選択しました。保存処理中です...`,
                 components: []
             });
 
-            // 4. DB保存処理 (ここが重い可能性がある)
+            // 6. 保存処理の実行
+            console.log('  -> Starting continueActRecord...');
             const resultMessage = await continueActRecord({
                 ...pending,
                 userId: userId,
                 fieldName: fieldName
             });
 
-            // 5. 保存完了後に一時データを削除
+            // 7. クリーンアップと完了通知
             pendingActRecords.delete(userId);
-
-            // 6. followUp で最終的な結果Embedを投稿
             await interaction.followUp(resultMessage);
+            console.log('  -> Save complete and followUp sent.');
 
         } catch (error) {
-            console.error('ボタン処理中の致命的エラー:', error);
-            // update済みのため、エラー通知は followUp で行う
-            await interaction.followUp({
-                content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\``
-            }).catch(() => { });
+            console.error('  !! Button Process Error:', error);
+            // エラーを Discord 上に表示させて原因を特定しやすくする
+            try {
+                const errorMessage = { content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.stack.substring(0, 500)}\n\`\`\`` };
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.update({ ...errorMessage, components: [] });
+                }
+            } catch (e) {
+                console.error('  !! Failed to send error message to user:', e);
+            }
         }
     }
     // --- フィールド選択ボタンの処理 ---
