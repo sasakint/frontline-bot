@@ -13,13 +13,13 @@ const cheerio = require('cheerio'); // HTML解析に使用 // ★追加
 const firebaseAppModule = require('firebase/app');
 const firebaseFirestoreModule = require('firebase/firestore');
 
-let userId = 'anonymous'; 
+let userId = 'anonymous';
 let isAuthReady = true;
 
 // 予期せぬ同期的なエラーを捕捉し、Botのプロセスが終了する前にログを出力する
 process.on('uncaughtException', error => {
     console.error('@@@ 究極のクラッシュ捕捉: 同期エラー @@@', error.stack);
-    process.exit(1); 
+    process.exit(1);
 });
 
 // 予期せぬ非同期的なエラーを捕捉
@@ -29,16 +29,16 @@ process.on('unhandledRejection', error => {
 
 // 関数をモジュールから抽出
 const initializeApp = firebaseAppModule.initializeApp;
-const { 
-    getFirestore, 
-    doc, 
-    setDoc, 
-    getDoc, 
-    deleteDoc, 
-    collection, 
-    addDoc, 
+const {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    deleteDoc,
+    collection,
+    addDoc,
     serverTimestamp,
-    updateDoc, 
+    updateDoc,
     getDocs, // 複数のドキュメントを取得するために追加
     query,
     orderBy,
@@ -53,20 +53,21 @@ const STRATEGIST_REPORT_COLLECTION_NAME = 'strategist_reports'; // 軍師報告�
 const META_COLLECTION_NAME = 'meta_data'; // メタデータ保存用
 const SUMMARY_COLLECTION_NAME = 'match_summaries';
 
+const ADMIN_DISCORD_ID = "830073680812965888";
 
 // Botのメタデータ（アナウンス設定、リストメッセージIDなど）を保存する場所
 const META_COLLECTION_ID = 'bot_meta';
 const ANNOUNCEMENT_DOC_ID = 'announcement_state';
-const WATCHLIST_DOC_ID = 'watchlist_message'; 
+const WATCHLIST_DOC_ID = 'watchlist_message';
 const FF14_COLOR_RED = 0xCF1E1E; // エラー用カラー
 const FF14_COLOR_GREEN = 0x47ff47; // 緑 (成功、確認)
 const FF14_COLOR_YELLOW = 0xFFFF00;
 const FF14_COLOR_GRAY = 0x808080;
 
 const TEAM_CODES = {
-    'Maelstrom': '黒渦団', 
-    'Twin Adders': '双蛇党', 
-    'Immortal Flames': '不滅隊', 
+    'Maelstrom': '黒渦団',
+    'Twin Adders': '双蛇党',
+    'Immortal Flames': '不滅隊',
 };
 
 
@@ -100,16 +101,16 @@ const watchlistMetaDocRef = doc(db, META_COLLECTION_ID, WATCHLIST_DOC_ID);
 // Discordクライアントの初期化とインテント（ボットが受け取るイベント）の設定
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds,           
-        GatewayIntentBits.GuildMessages,    
-        GatewayIntentBits.MessageContent,   
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
     ],
     partials: [Partials.Message, Partials.Channel],
 });
 
 // Discord Bot TokenとClientID
 const token = process.env.DISCORD_BOT_TOKEN;
-const clientId = '1443955344081555458'; 
+const clientId = '1443955344081555458';
 // ----------------------------------------------------------------
 
 /**
@@ -121,7 +122,7 @@ function getFirestoreLazy() {
     if (firebaseApp && isAuthReady) {
         return getFirestore(firebaseApp);
     }
-    
+
     // 未初期化の場合、環境変数を使って初期化する
     const firebaseConfig = {
         apiKey: process.env.FIREBASE_API_KEY,
@@ -130,7 +131,7 @@ function getFirestoreLazy() {
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
         messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
         appId: process.env.FIREBASE_APP_ID,
-        measurementId: process.env.FIREBASE_MEASUREMENT_ID, 
+        measurementId: process.env.FIREBASE_MEASUREMENT_ID,
     };
 
     try {
@@ -178,7 +179,7 @@ const JOB_CHOICES = [
     { name: '忍者 (NIN)', value: 'NIN' },
     { name: '侍 (SAM)', value: 'SAM' },
     { name: 'リーパー (RPR)', value: 'RPR' },
-    { name: 'ヴァイパー (VPR)', value: 'VPR' }, 
+    { name: 'ヴァイパー (VPR)', value: 'VPR' },
     // レンジDPS
     { name: '吟遊詩人 (BRD)', value: 'BRD' },
     { name: '機工士 (MCH)', value: 'MCH' },
@@ -187,17 +188,17 @@ const JOB_CHOICES = [
     { name: '黒魔道士 (BLM)', value: 'BLM' },
     { name: '召喚士 (SMN)', value: 'SMN' },
     { name: '赤魔道士 (RDM)', value: 'RDM' },
-    { name: 'ピクトマンサー (PCT)', value: 'PCT' }, 
+    { name: 'ピクトマンサー (PCT)', value: 'PCT' },
 ];
 
 // --- ジョブコードに対応する絵文字のマップ ---
 const JOB_EMOJIS = {
-    'PLD': '🛡️', 'WAR': '🪓', 'DRK': '⚫', 'GNB': '💥', 
-    'WHM': '🌸', 'SCH': '🧚', 'AST': '🔮', 'SGE': '🟢', 
-    'MNK': '👊', 'DRG': '🐉', 'NIN': '🥷', 'SAM': '🔪', 
-    'RPR': '💀', 'VPR': '🐍', 'BRD': '🏹', 'MCH': '🔫', 
-    'DNC': '💃', 'BLM': '🧙‍♀️', 'SMN': '🦄', 'RDM': '🗡️', 
-    'PCT': '🎨', 
+    'PLD': '🛡️', 'WAR': '🪓', 'DRK': '⚫', 'GNB': '💥',
+    'WHM': '🌸', 'SCH': '🧚', 'AST': '🔮', 'SGE': '🟢',
+    'MNK': '👊', 'DRG': '🐉', 'NIN': '🥷', 'SAM': '🔪',
+    'RPR': '💀', 'VPR': '🐍', 'BRD': '🏹', 'MCH': '🔫',
+    'DNC': '💃', 'BLM': '🧙‍♀️', 'SMN': '🦄', 'RDM': '🗡️',
+    'PCT': '🎨',
 };
 
 
@@ -206,7 +207,7 @@ const FRONTLINE_ROTATION = [
     { name: '外縁遺跡群（制圧戦）', short: '制圧戦' }, // Index 0
     { name: 'シールロック（争奪戦）', short: '争奪戦' },    // Index 1
     { name: 'フィールド・オブ・グローリー（砕氷戦）', short: '砕氷戦' }, // Index 2
-    { name: 'オンサル・ハカイル（終節戦）', short: '終節戦' }  // Index 3
+    { name: 'オンサル・ハカイル（終節戦）', short: '終節戦' },  // Index 3
     { name: 'ウォーコー・チーテ（演習戦）', short: '演習戦' }  // Index 4
 ];
 
@@ -226,9 +227,9 @@ async function storeDataToFirestore(data) {
             // Firestoreへの保存処理（例: 'frontline_results'コレクションに保存）
             await addDoc(collection(db, RESULT_COLLECTION_NAME), {
                 // ★★★ 修正箇所: スプレッド構文 (...) を使用して、parseActDataからの全フィールドを格納 ★★★
-                ...record, 
+                ...record,
                 // timestampはparseActDataで付与したrecordedAtではなく、Firestoreのサーバータイムスタンプを使用
-                timestamp: serverTimestamp(), 
+                timestamp: serverTimestamp(),
             });
             successCount++;
         } catch (e) {
@@ -247,15 +248,15 @@ async function storeDataToFirestore(data) {
  * @param {string} targetStrategistName - 検索対象の軍師名（例: 'Taro Yamada'）。頭文字は大文字化済み。
  */
 async function strategistSearchCommand(targetStrategistName) {
-    
+
     // 1. データベースから指定された軍師のレコードのみを取得
     const db = getFirestore();
     const resultsCol = collection(db, RESULT_COLLECTION_NAME);
-    
+
     // ACT記録ドキュメントから、名前と軍師フラグで検索
     const q = query(
         resultsCol,
-        where('isStrategist', '==', true), 
+        where('isStrategist', '==', true),
         where('name', '==', targetStrategistName) // 頭文字大文字化されたフルネームで検索
     );
 
@@ -270,7 +271,7 @@ async function strategistSearchCommand(targetStrategistName) {
     let totalWins = 0;
     let totalDPS = 0;
     // ★ 修正点: rankCountsのキーを明示的に文字列で初期化
-    const rankCounts = { '1': 0, '2': 0, '3': 0 }; 
+    const rankCounts = { '1': 0, '2': 0, '3': 0 };
     const jobCounts = {};
     const totalReports = strategistRecords.length;
 
@@ -278,22 +279,22 @@ async function strategistSearchCommand(targetStrategistName) {
         // 順位の集計ロジックを修正
         const rankValue = String(record.rank).trim(); // 確実に文字列として取得し、前後の空白を削除
         const numericRank = parseInt(rankValue); // 数値に変換
-        
+
         // 1, 2, 3 のいずれかであるかチェック
         if (numericRank === 1 || numericRank === 2 || numericRank === 3) {
             // ★ 修正点: rankCountsへのアクセスを文字列キー ('1', '2', '3') に統一
-            const rankKey = String(numericRank); 
-            
+            const rankKey = String(numericRank);
+
             rankCounts[rankKey] = (rankCounts[rankKey] || 0) + 1;
-            
+
             if (numericRank === 1) {
                 totalWins++;
             }
         }
-        
+
         // DPSの合計
-        totalDPS += parseFloat(record.dps) || 0; 
-        
+        totalDPS += parseFloat(record.dps) || 0;
+
         // ジョブのカウント
         const job = record.job || '不明';
         jobCounts[job] = (jobCounts[job] || 0) + 1;
@@ -313,16 +314,16 @@ async function strategistSearchCommand(targetStrategistName) {
     }
     const mostUsedJobCode = mostUsedJob.toUpperCase();
     const mostUsedJobEmoji = JOB_EMOJIS[mostUsedJobCode] || '❓';
-    
+
     // 4. Embedの作成
     const formatNumber = (num) => (typeof num === 'number' ? num.toLocaleString() : num);
     const winPerc = winRate.toFixed(2);
     const avgDPSFormatted = formatNumber(Math.round(avgDPS));
-    
+
     let color = 0xAAAAAA; // FF14_COLOR_GRAYの代替
     if (typeof FF14_COLOR_GREEN !== 'undefined') {
         if (winRate >= 50) {
-            color = FF14_COLOR_GREEN; 
+            color = FF14_COLOR_GREEN;
         } else if (winRate >= 33.33) {
             color = FF14_COLOR_YELLOW;
         } else {
@@ -332,19 +333,19 @@ async function strategistSearchCommand(targetStrategistName) {
 
 
     const embed = new EmbedBuilder()
-        .setColor(color) 
+        .setColor(color)
         .setTitle(`🏆 軍師 戦績レポート: ${targetStrategistName}`)
         .setDescription(`総記録回数: **${totalReports} 回**`)
         .addFields(
-            { 
-                name: '⚔️ 最重要指標', 
-                value: `**総勝利回数:** ${totalWins} 回\n**勝率:** \`${winPerc}%\``, 
-                inline: true 
+            {
+                name: '⚔️ 最重要指標',
+                value: `**総勝利回数:** ${totalWins} 回\n**勝率:** \`${winPerc}%\``,
+                inline: true
             },
-            { 
-                name: '💡 ジョブ/火力', 
-                value: `**最多ジョブ:** ${mostUsedJobEmoji} [${mostUsedJob}] (${maxCount}回)\n**平均DPS:** \`${avgDPSFormatted}\``, 
-                inline: true 
+            {
+                name: '💡 ジョブ/火力',
+                value: `**最多ジョブ:** ${mostUsedJobEmoji} [${mostUsedJob}] (${maxCount}回)\n**平均DPS:** \`${avgDPSFormatted}\``,
+                inline: true
             },
             { name: '\u200B', value: '\u200B', inline: false }, // 空行用
             // ★ 修正点: 文字列キーでアクセスするように変更
@@ -354,7 +355,7 @@ async function strategistSearchCommand(targetStrategistName) {
         )
         .setFooter({ text: '記録はACTデータに基づきます。' })
         .setTimestamp();
-    
+
     return { embeds: [embed] };
 }
 
@@ -366,23 +367,23 @@ function getCurrentFrontlineMap() {
     // 基準日: 2023年12月28日 00:00:00 JST を Index 0 (制圧戦) の開始日とする
     // ユーザーからの報告に基づき、計算ズレ（+2日）を解消するため、基準日をさらに2日前に修正しました。
     const JST_EPOCH_MS = Date.UTC(2023, 11, 27, 15, 0, 0, 0); // 12/28 JST 0:00 に調整
-    
+
     const now = new Date();
-    
+
     // 1日のミリ秒数
     const MS_PER_DAY = 86400000;
-    
+
     // JSTのオフセット（9時間 = 9 * 60 * 60 * 1000 ms）
-    const JST_OFFSET_MS = 9 * 3600000; 
-    
+    const JST_OFFSET_MS = 9 * 3600000;
+
     // 現在のUTC時刻にJSTオフセットを加算し、JSTの0時を基準として経過時間を計算します。
-    const nowJstZeroed = now.getTime() + JST_OFFSET_MS; 
+    const nowJstZeroed = now.getTime() + JST_OFFSET_MS;
 
     // 基準日からJST時刻で何日経過したか
     const daysPassed = Math.floor((nowJstZeroed - JST_EPOCH_MS) / MS_PER_DAY);
-    
+
     const rotationIndex = daysPassed % FRONTLINE_ROTATION.length;
-    
+
     return FRONTLINE_ROTATION[rotationIndex];
 }
 // -----------------------------------------------------------------
@@ -395,14 +396,14 @@ function getCurrentFrontlineMap() {
 async function getCharacterNameByUserId(userId) {
     // 【重要】関数内で const db = getFirestore() を書かないでください！
     // グローバルの db 変数を使います。
-    
-    const docRef = doc(db, LINK_COLLECTION_NAME, userId); 
+
+    const docRef = doc(db, LINK_COLLECTION_NAME, userId);
     try {
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
             const data = docSnap.data();
             // charName または characterName どちらか入っている方を返します
-            return data.charName || data.characterName || null; 
+            return data.charName || data.characterName || null;
         }
         return null;
     } catch (e) {
@@ -461,11 +462,11 @@ function parseActData(csvText, rank) {
             healsTaken: parseFloat(record.HealsTaken || 0),
             damageTaken: parseFloat(record.DamageTaken || 0),
             // %表記を削除し、数値として格納
-            overHealPct: parseFloat(record.OverHealPct.replace('%', '') || 0), 
+            overHealPct: parseFloat(record.OverHealPct.replace('%', '') || 0),
 
             // メタデータ
             // 【変更点3】 新たにrank情報をデータに追加
-            rank: resultRank, 
+            rank: resultRank,
             recordedAt: new Date().toISOString(),
         };
 
@@ -492,11 +493,11 @@ const FF14_COLOR_BLUE = 0x116BDD; // FFXIVっぽいロゴブルー (17, 107, 189
  */
 function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
     if (!actData) {
-        return {}; 
+        return {};
     }
 
     let records = [];
-    const aggregatedData = {}; 
+    const aggregatedData = {};
 
     try {
         // --- 1. CSVデータのパース（同期処理） ---
@@ -505,14 +506,14 @@ function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
             skip_empty_lines: true,
             delimiter: ',',
         });
-        
+
     } catch (error) {
         console.error("ACTデータのパース中にエラーが発生しました:", error);
-        return {}; 
+        return {};
     }
-    
+
     if (records.length === 0) return {};
-    
+
     // --- 2. 全フィールドの集計と整形ロジック (lowercase化とundefined排除) ---
 
     // 必須ヘッダーのチェック
@@ -520,30 +521,30 @@ function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
     const headers = Object.keys(records[0] || {});
     const hasRequiredHeaders = requiredHeaders.every(header => headers.includes(header));
     if (!hasRequiredHeaders) {
-         console.error("【診断-パース】必須のACTヘッダーが見つかりませんでした。");
-         return {}; 
+        console.error("【診断-パース】必須のACTヘッダーが見つかりませんでした。");
+        return {};
     }
 
     for (const record of records) {
         // NameとJobが実在するプレイヤーやエンティティであることを確認
         if (!record.Name || !record.Job || record.Name === 'Limit Break') {
-             continue; // Limit Breakや無効な行はスキップ
+            continue; // Limit Breakや無効な行はスキップ
         }
 
         const nameKey = record.Name;
         const cleanedRecord = {};
-        
+
         // --- 変換するフィールドの定義 ---
         const integerFields = ['duration', 'damage', 'kills', 'healed', 'heals', 'powerdrain', 'powerreplenish', 'hits', 'crithits', 'blocked', 'misses', 'swings', 'healstaken', 'damagetaken', 'deaths', 'threatdelta', 'directhitcount', 'critdirecthitcount'];
         const floatFields = ['dps', 'encdps', 'enchps', 'damageperc', 'healedperc', 'tohit', 'critdamperc', 'crithealperc', 'parrypct', 'blockpct', 'inctohit', 'overhealpct', 'directhitpct', 'critdirecthitpct'];
-        
+
         // 全フィールドをループし、キーを小文字に変換し、値を整形
         for (const [key, value] of Object.entries(record)) {
             const lowerKey = key.toLowerCase(); // キーを小文字に変換
 
             // undefined, null, '--' はFirestoreでエラーになるため、空文字列に変換
             if (value === undefined || value === null || value === '--') {
-                cleanedRecord[lowerKey] = ''; 
+                cleanedRecord[lowerKey] = '';
                 continue;
             }
 
@@ -551,20 +552,20 @@ function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
 
             if (integerFields.includes(lowerKey)) {
                 cleanedRecord[lowerKey] = parseInt(stringValue, 10) || 0;
-            } 
+            }
             else if (floatFields.includes(lowerKey)) {
                 const cleanedValue = stringValue.replace(/%|-+/g, '');
-                cleanedRecord[lowerKey] = parseFloat(cleanedValue) || 0.0; 
+                cleanedRecord[lowerKey] = parseFloat(cleanedValue) || 0.0;
             }
             else {
                 // その他のフィールド（文字列など）はそのまま
                 cleanedRecord[lowerKey] = stringValue;
             }
         }
-        
+
         // parseActDataでは rank/team のタグ付けは行わず、actRecordCommand側で行う
         aggregatedData[nameKey] = {
-            ...cleanedRecord, 
+            ...cleanedRecord,
             rank: 'N/A', // 一旦ダミーでN/A
             team: 'N/A', // 一旦ダミーでN/A
         };
@@ -588,7 +589,7 @@ function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
  * ACTデータ処理、Firestoreへの保存、結果Embedの作成を行うメインロジック
  */
 async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills, myAssists, attachmentContent, strategistFirst, strategistLast) {
-    
+
     // 1. 自分のキャラクター名を取得
     const myCharacterName = await getCharacterNameByUserId(userId);
 
@@ -608,13 +609,13 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
     } else {
         console.log(`【デバッグ】YOU変換対象のキャラ名: ${myCharacterName}`);
     }
-    
+
     // --- 2. 試合のポイントと順位を決定 ---
     const teamPoints = [
         { team: 'Maelstrom', points: mPoint, name: '黒渦団' },
         { team: 'Twin Adders', points: tPoint, name: '双蛇党' },
         { team: 'Immortal Flames', points: iPoint, name: '不滅隊' },
-    ].sort((a, b) => b.points - a.points); 
+    ].sort((a, b) => b.points - a.points);
 
     const pointsMap = {};
     let rankCounter = 1;
@@ -634,7 +635,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
     const rawRecords = parse(attachmentContent, { columns: true, skip_empty_lines: true, delimiter: ',' });
     const durationValues = rawRecords.map(r => parseInt(r.Duration)).filter(d => !isNaN(d) && d > 0);
     const estimatedDuration = durationValues.length > 0 ? Math.max(...durationValues) : null;
-    
+
     const summaryData = {
         field: fieldName,
         myTeam: TEAM_CODES[myTeam] || myTeam,
@@ -646,37 +647,37 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
     const matchId = await storeMatchSummary(summaryData);
 
     // --- 4. ACTデータの処理と「YOU」の変換 ---
-    const parsedData = parseActData(attachmentContent); 
-    let processedData = {}; 
+    const parsedData = parseActData(attachmentContent);
+    let processedData = {};
 
     for (const [name, record] of Object.entries(parsedData)) {
         let keyName = name;
-        const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(); 
+        const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         const isYou = nameNormalized === 'YOU';
-        
+
         // 変換条件: 'Ally: T'
         if (myCharacterName && isYou && record.ally === 'T') {
-            keyName = myCharacterName;     
-            record.name = myCharacterName; 
+            keyName = myCharacterName;
+            record.name = myCharacterName;
             console.log(`【変換成功】ACTデータの 'YOU' (Ally: T) を '${myCharacterName}' に置き換えました。`);
         }
-        
+
         processedData[keyName] = record;
     }
 
     // --- 5. データベースへの保存とチーム・ランク付与/軍師フラグ追加 ---
     let successCount = 0;
     let failCount = 0;
-    let myRecord = null; 
+    let myRecord = null;
     let strategistRecord = null; // 軍師のレコードを格納する変数
 
-    for (const [name, record] of Object.entries(processedData)) { 
+    for (const [name, record] of Object.entries(processedData)) {
         // ★★★ isStrategist フィールドを初期化 ★★★
-        let finalRecord = { ...record, matchId: matchId, userId: userId, isStrategist: false }; 
+        let finalRecord = { ...record, matchId: matchId, userId: userId, isStrategist: false };
 
         // 自分のキャラかどうか判定 (変換後の名前でチェック)
         const isMyCharacter = myCharacterName && (name === myCharacterName);
-        
+
         // ★★★ 軍師かどうか判定 ★★★
         const isStrategist = strategistName && (name === strategistName);
 
@@ -684,16 +685,16 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
             // 自分 (Ally: T)
             finalRecord.kills = myKills;
             finalRecord.assists = myAssists;
-            finalRecord.team = TEAM_CODES[myTeam]; 
+            finalRecord.team = TEAM_CODES[myTeam];
             finalRecord.rank = pointsMap[myTeam].rank;
-            myRecord = finalRecord; 
+            myRecord = finalRecord;
             console.log(`【上書き】自分(${name})の戦績を更新: K${myKills}/A${myAssists}`);
 
         } else if (finalRecord.ally === 'T') {
             // 他の味方(T)
             finalRecord.team = TEAM_CODES[myTeam];
             finalRecord.rank = pointsMap[myTeam].rank;
-            
+
         } else if (finalRecord.ally === 'F') {
             // 敵(F)
             finalRecord.team = 'None';
@@ -704,7 +705,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
             finalRecord.team = 'None';
             finalRecord.rank = 'None';
         }
-        
+
         // ★★★ 軍師フラグを設定し、レコードを記憶 ★★★
         if (isStrategist) {
             finalRecord.isStrategist = true;
@@ -727,9 +728,9 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
     // damageが0より大きいレコードのみを対象
     const allPlayersArray = Object.values(processedData)
-        .filter(p => p.damage > 0 && p.name && p.job) 
+        .filter(p => p.damage > 0 && p.name && p.job)
         // データベースに保存したレコードからisStrategist情報を反映させる
-        .map(p => ({ ...p, isStrategist: (strategistRecord && p.name === strategistRecord.name) ? true : false })) 
+        .map(p => ({ ...p, isStrategist: (strategistRecord && p.name === strategistRecord.name) ? true : false }))
         .sort((a, b) => b.damage - a.damage); // 与ダメ(Damage)でソート
 
     // 自分のレコードをランキングから除外したリスト
@@ -748,14 +749,14 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
         )
         .setTimestamp()
         .setFooter({ text: `記録者: ${myCharacterName || userId} | 試合時間: ${estimatedDuration || '不明'}秒 | データベースに格納済み` });
-        
+
     // 注釈の変更
     const footnote = "\n\n⚠️ **注釈:** フィールドは優勝チームのポイントに基づいて自動判定しています。";
     embed.setDescription(embed.data.description + footnote);
-        
+
     // ★★★ 軍師情報エリアを追加 ★★★
     if (strategistRecord) {
-        const strategistJobCode = strategistRecord.job.toUpperCase(); 
+        const strategistJobCode = strategistRecord.job.toUpperCase();
         const strategistEmoji = JOB_EMOJIS[strategistJobCode] || '❓';
         embed.addFields({
             name: `────────────────────`,
@@ -766,7 +767,7 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
     // 自分の情報
     if (myRecord) {
-        const myJobCode = myRecord.job.toUpperCase(); 
+        const myJobCode = myRecord.job.toUpperCase();
         const myEmoji = JOB_EMOJIS[myJobCode] || '❓';
         const myDps = formatNumber(Math.round(myRecord.dps) || 0);
 
@@ -790,22 +791,22 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
             value: `**被Dmg:** ${formatNumber(myRecord.damagetaken)} / **Death:** ${myRecord.deaths}`,
             inline: true
         });
-        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false }); 
+        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false });
     } else {
-        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false }); 
+        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false });
     }
-        
+
     // ランキング情報の追加
     topPlayers.forEach((player, index) => {
-        const dps = formatNumber(Math.round(player.dps) || 0); 
-        const jobCode = player.job.toUpperCase(); 
-        const emoji = JOB_EMOJIS[jobCode] || '❓'; 
-        
+        const dps = formatNumber(Math.round(player.dps) || 0);
+        const jobCode = player.job.toUpperCase();
+        const emoji = JOB_EMOJIS[jobCode] || '❓';
+
         let allyMark = player.ally === 'T' ? '🟢' : (player.ally === 'F' ? '🔴' : '⚪');
-        
+
         // ★★★ 軍師マークを追加 ★★★
         if (player.isStrategist) {
-            allyMark = '🚩'; 
+            allyMark = '🚩';
         }
 
         embed.addFields({
@@ -879,7 +880,7 @@ async function assignCharacterRoles(member, characterName) {
     try {
         // ロールを一括付与
         await member.roles.add(rolesToAssign, "Lodestone連携によるキャラクター名とFF14共通ロールの自動付与");
-        
+
         const roleNames = rolesToAssign.map(r => r.name);
         console.log(`メンバー ${member.user.tag} にロール ${roleNames.join(', ')} を付与しました。`);
         return roleNames; // 付与したロール名を返却
@@ -933,22 +934,22 @@ async function findOrCreatePrivateCharacterChannel(guild, characterName, charact
 
             // チャンネルの作成
             channel = await guild.channels.create({
-                name: channelName, 
+                name: channelName,
                 type: ChannelType.GuildText,
                 topic: `${characterName} 専用のフロントライン記録・メモ用プライベートチャンネルです。`,
                 permissionOverwrites: permissionOverwrites,
                 reason: "Lodestone連携によるキャラクター専用プライベートチャンネルの自動作成",
             });
-            
+
             console.log(`プライベートチャンネル '${channelName}' を作成し、ロール権限を設定しました。`);
 
             // 初回メッセージを送信
             if (channel && channel.isTextBased()) {
                 await channel.send({
                     content: `🎉 ${characterRole.toString()} さんへようこそ！\n` +
-                             `ここは、あなた専用のプライベートチャンネル（**${displayChannelName}**）です。\n` +
-                             `このチャンネルは、**${characterRole.name}** ロールを持っているメンバー（あなた自身）とサーバー管理者だけが見ることができます。\n` +
-                             `フロントラインのリザルト記録やメモにご活用ください。`
+                        `ここは、あなた専用のプライベートチャンネル（**${displayChannelName}**）です。\n` +
+                        `このチャンネルは、**${characterRole.name}** ロールを持っているメンバー（あなた自身）とサーバー管理者だけが見ることができます。\n` +
+                        `フロントラインのリザルト記録やメモにご活用ください。`
                 });
             }
 
@@ -970,14 +971,14 @@ function startDailyScheduler() {
     // 1. 次のJST 0:00までの時間を計算
     const now = new Date();
     const MS_PER_DAY = 86400000;
-    const JST_OFFSET_MS = 9 * 3600000; 
+    const JST_OFFSET_MS = 9 * 3600000;
 
     // 現在のUTC時刻 (ms)
     const currentUtcMs = now.getTime();
-    
+
     // JSTの「今日」の0時がUTCで何時か
     const todayJstMidnightUtcMs = Math.floor((currentUtcMs + JST_OFFSET_MS) / MS_PER_DAY) * MS_PER_DAY - JST_OFFSET_MS;
-    
+
     // JSTの「明日」の0時（次の切り替わり時間）
     let nextJstMidnightUtcMs = todayJstMidnightUtcMs + MS_PER_DAY;
 
@@ -985,7 +986,7 @@ function startDailyScheduler() {
     if (nextJstMidnightUtcMs <= currentUtcMs) {
         nextJstMidnightUtcMs += MS_PER_DAY;
     }
-    
+
     // 次の実行までのミリ秒
     const msToWait = nextJstMidnightUtcMs - currentUtcMs;
 
@@ -995,7 +996,7 @@ function startDailyScheduler() {
     setTimeout(async () => {
         await dailyAnnouncementTask();
         // 実行後、次の日のために再スケジュール (24時間後)
-        startDailyScheduler(); 
+        startDailyScheduler();
     }, msToWait);
 }
 
@@ -1004,14 +1005,14 @@ function startDailyScheduler() {
  */
 async function dailyAnnouncementTask() {
     console.log('--- 0:00 JST 定期アナウンス実行 ---');
-    
+
     // 1. メタデータを取得
     const metaDoc = await getDoc(metaDocRef);
     if (!metaDoc.exists() || !metaDoc.data().targetChannelId) {
         console.error('アナウンスのターゲットチャンネルが設定されていません。/todayを最初に実行して設定してください。');
         return;
     }
-    
+
     const metaData = metaDoc.data();
     const targetChannelId = metaData.targetChannelId;
     const lastMessageId = metaData.lastAnnouncementMessageId;
@@ -1022,9 +1023,9 @@ async function dailyAnnouncementTask() {
     const currentMapIndex = FRONTLINE_ROTATION.findIndex(m => m.name === currentMap.name);
     const nextMapIndex = (currentMapIndex + 1) % FRONTLINE_ROTATION.length;
     const nextMap = FRONTLINE_ROTATION[nextMapIndex];
-    
+
     // 2. 新しいアナウンスメッセージを作成
-    const newAnnouncementContent = 
+    const newAnnouncementContent =
         `📢 **【フロントライン 今日のマップ】**\n` +
         `**日付:** ${new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' })}\n\n` +
         `今日開催されるマップはこちらです。\n\n` +
@@ -1035,7 +1036,7 @@ async function dailyAnnouncementTask() {
     try {
         const channel = await client.channels.fetch(targetChannelId);
         if (channel && channel.isTextBased()) {
-            
+
             // 3. 前日のメッセージを削除
             if (lastMessageId) {
                 try {
@@ -1052,13 +1053,13 @@ async function dailyAnnouncementTask() {
                     console.warn(`前日のメッセージ (${lastMessageId}) の削除に失敗しましたが、続行します:`, deleteError.message);
                 }
             }
-            
+
             // 4. 新しいメッセージを送信
             const newMessage = await channel.send({ content: newAnnouncementContent });
-            
+
             // 5. Firestoreを更新 (新しいメッセージIDを保存)
-            await setDoc(metaDocRef, { 
-                targetChannelId: targetChannelId, 
+            await setDoc(metaDocRef, {
+                targetChannelId: targetChannelId,
                 lastAnnouncementMessageId: newMessage.id,
                 updatedAt: serverTimestamp()
             }, { merge: true });
@@ -1084,7 +1085,7 @@ function capitalize(str) {
     if (!str || typeof str !== 'string') return '';
     const trimmed = str.trim();
     if (trimmed.length === 0) return '';
-    
+
     // 最初の文字を大文字にし、残りの文字を小文字にする（日本語を含む文字列にも適用）
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 }
@@ -1131,6 +1132,18 @@ const commands = [
         description: '現在のLodestoneとの紐づけ状態を確認します。',
     },
     {
+        name: 'delete_match',
+        description: '指定した試合IDの記録を削除します',
+        options: [
+            {
+                name: 'match_id',
+                description: '削除したい試合ID',
+                type: 3, // STRING
+                required: true,
+            },
+        ],
+    },
+    {
         name: 'record',
         description: 'フロントラインのリザルトを手動で記録します。',
         options: [
@@ -1161,17 +1174,17 @@ const commands = [
         name: 'watchlist_add',
         description: 'あやしいプレイヤーをリストに登録し、コマンドメッセージを削除します。',
         options: [
-            { 
-                name: 'first_name', 
-                description: 'キャラクターの「名」 (例: Tanaka)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'first_name',
+                description: 'キャラクターの「名」 (例: Tanaka)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
-            { 
-                name: 'last_name', 
-                description: 'キャラクターの「姓」 (例: Tarou)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'last_name',
+                description: 'キャラクターの「姓」 (例: Tarou)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
             { name: 'world_name', description: 'ワールド名（サーバー名）', type: ApplicationCommandOptionType.String, required: true },
             { name: 'memo', description: 'あやしい行動や理由のメモ', type: ApplicationCommandOptionType.String, required: true },
@@ -1182,23 +1195,23 @@ const commands = [
         name: 'watchlist_delete',
         description: '指定した名前のプレイヤーをウォッチリストから削除します。',
         options: [
-            { 
-                name: 'first_name', 
-                description: 'キャラクターの「名」 (例: Tanaka)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'first_name',
+                description: 'キャラクターの「名」 (例: Tanaka)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
-            { 
-                name: 'last_name', 
-                description: 'キャラクターの「姓」 (例: Tarou)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'last_name',
+                description: 'キャラクターの「姓」 (例: Tarou)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
-            { 
-                name: 'world_name', 
-                description: 'ワールド名（サーバー名）。指定すると削除対象を絞り込めます。', 
-                type: ApplicationCommandOptionType.String, 
-                required: false 
+            {
+                name: 'world_name',
+                description: 'ワールド名（サーバー名）。指定すると削除対象を絞り込めます。',
+                type: ApplicationCommandOptionType.String,
+                required: false
             },
         ],
     },
@@ -1207,27 +1220,27 @@ const commands = [
         name: 'watchlist_check',
         description: 'プレイヤー名がウォッチリストに登録されているか確認します。',
         options: [
-            { 
-                name: 'first_name', 
-                description: 'チェックしたいキャラクターの「名」 (例: Tanaka)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'first_name',
+                description: 'チェックしたいキャラクターの「名」 (例: Tanaka)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
-            { 
-                name: 'last_name', 
-                description: 'チェックしたいキャラクターの「姓」 (例: Tarou)', 
-                type: ApplicationCommandOptionType.String, 
-                required: true 
+            {
+                name: 'last_name',
+                description: 'チェックしたいキャラクターの「姓」 (例: Tarou)',
+                type: ApplicationCommandOptionType.String,
+                required: true
             },
-            { 
-                name: 'world_name', 
-                description: 'ワールド名（サーバー名）。指定するとより正確に検索します。', 
-                type: ApplicationCommandOptionType.String, 
-                required: false 
+            {
+                name: 'world_name',
+                description: 'ワールド名（サーバー名）。指定するとより正確に検索します。',
+                type: ApplicationCommandOptionType.String,
+                required: false
             },
         ],
     },
-   // ★★★ 軍師報告コマンド (/strategist_report) ★★★
+    // ★★★ 軍師報告コマンド (/strategist_report) ★★★
     // {
     //     name: 'strategist_report',
     //     description: '軍師の試合結果を記録します。',
@@ -1257,93 +1270,93 @@ const commands = [
     //         },
     //     ],
     // },
-{
-    name: 'strategist_search',
-    description: '特定の軍師の過去の戦績を検索し、勝率を表示します。',
-    options: [
-        {
-            name: 'first_name', // 苗字
-            description: '検索したい軍師の苗字（例: Yamada）',
-            type: ApplicationCommandOptionType.String,
-            required: true,
-        },
-        {
-            name: 'last_name', // 名前（名）
-            description: '検索したい軍師の名前（名、例: Tarou）',
-            type: ApplicationCommandOptionType.String,
-            required: true,
-        },
-    ],
-},
-{
-    name: 'act_record',
-    description: 'ACTのPvPサマリーCSVと試合順位を記録します。',
-    options: [
-        {
-            name: 'my_team',
-            description: '自分の所属アライアンス（黒渦団、双蛇党、不滅隊）',
-            type: ApplicationCommandOptionType.String,
-            required: true,
-            choices: [
-                { name: '黒渦団', value: 'Maelstrom' },
-                { name: '双蛇党', value: 'Twin Adders' },
-                { name: '不滅隊', value: 'Immortal Flames' },
-            ],
-        },
-        {
-            name: 'maelstrom_points',
-            description: '黒渦団の最終ポイント',
-            type: ApplicationCommandOptionType.Integer,
-            required: true,
-        },
-        {
-            name: 'twin_adders_points',
-            description: '双蛇党の最終ポイント',
-            type: ApplicationCommandOptionType.Integer,
-            required: true,
-        },
-        {
-            name: 'immortal_flames_points',
-            description: '不滅隊の最終ポイント',
-            type: ApplicationCommandOptionType.Integer,
-            required: true,
-        },
-        {
-            name: 'my_kills',
-            description: 'あなたのキル数 (ACTデータ内のKillsではなく、手入力)',
-            type: ApplicationCommandOptionType.Integer,
-            required: true,
-        },
-        {
-            name: 'my_assists',
-            description: 'あなたのアシスト数',
-            type: ApplicationCommandOptionType.Integer,
-            required: true,
-        },
-        {
-            name: 'strategist_first',
-            description: '軍師の「姓」を入力してください。（例：Taro）',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-        },
-        {
-            name: 'strategist_last',
-            description: '軍師の「名」を入力してください。（例：Yamada）',
-            type: ApplicationCommandOptionType.String,
-            required: false,
-        },
-    ],
-},
+    {
+        name: 'strategist_search',
+        description: '特定の軍師の過去の戦績を検索し、勝率を表示します。',
+        options: [
+            {
+                name: 'first_name', // 苗字
+                description: '検索したい軍師の苗字（例: Yamada）',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+            },
+            {
+                name: 'last_name', // 名前（名）
+                description: '検索したい軍師の名前（名、例: Tarou）',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+            },
+        ],
+    },
+    {
+        name: 'act_record',
+        description: 'ACTのPvPサマリーCSVと試合順位を記録します。',
+        options: [
+            {
+                name: 'my_team',
+                description: '自分の所属アライアンス（黒渦団、双蛇党、不滅隊）',
+                type: ApplicationCommandOptionType.String,
+                required: true,
+                choices: [
+                    { name: '黒渦団', value: 'Maelstrom' },
+                    { name: '双蛇党', value: 'Twin Adders' },
+                    { name: '不滅隊', value: 'Immortal Flames' },
+                ],
+            },
+            {
+                name: 'maelstrom_points',
+                description: '黒渦団の最終ポイント',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+            },
+            {
+                name: 'twin_adders_points',
+                description: '双蛇党の最終ポイント',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+            },
+            {
+                name: 'immortal_flames_points',
+                description: '不滅隊の最終ポイント',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+            },
+            {
+                name: 'my_kills',
+                description: 'あなたのキル数 (ACTデータ内のKillsではなく、手入力)',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+            },
+            {
+                name: 'my_assists',
+                description: 'あなたのアシスト数',
+                type: ApplicationCommandOptionType.Integer,
+                required: true,
+            },
+            {
+                name: 'strategist_first',
+                description: '軍師の「姓」を入力してください。（例：Taro）',
+                type: ApplicationCommandOptionType.String,
+                required: false,
+            },
+            {
+                name: 'strategist_last',
+                description: '軍師の「名」を入力してください。（例：Yamada）',
+                type: ApplicationCommandOptionType.String,
+                required: false,
+            },
+        ],
+    },
 ];
 
 async function getLodestoneCharacterInfo(lodestoneId) {
     // LodestoneのHTML構造の変更に耐えるため、cheerioの利用を推奨します。
     // Node.js環境を想定し、ここでは便宜的にrequireしますが、本来はファイル冒頭でインポートすべきです。
     // もしcheerioをインストールしていない場合は、npm install cheerio を実行してください。
-    const cheerio = require('cheerio'); 
-    
+    const cheerio = require('cheerio');
+
     const url = `https://jp.finalfantasyxiv.com/lodestone/character/${lodestoneId}/`;
-    
+
     try {
         // Lodestoneへのアクセス (User-AgentとTimeoutは維持)
         const response = await axios.get(url, {
@@ -1353,13 +1366,13 @@ async function getLodestoneCharacterInfo(lodestoneId) {
             },
             timeout: 10000 // タイムアウトを10秒に設定
         });
-        
+
         const html = response.data;
         const $ = cheerio.load(html); // CheerioでHTMLをパース
 
         let charName = null;
         let combinedServerString = null;
-        
+
         // 1. キャラクター名の抽出
         // セレクタ: .frame__chara__name (キャラクター名が表示されている要素)
         const nameElement = $('.frame__chara__name');
@@ -1371,11 +1384,11 @@ async function getLodestoneCharacterInfo(lodestoneId) {
         // セレクタ: .frame__chara__world (ワールド名とDC名が表示されている要素)
         const serverElement = $('.frame__chara__world');
         if (serverElement.length) {
-             // テキストコンテンツを取得し、改行や余分なスペースを削除して整形
-             // 例: "Ifrit [Gaia]" のような文字列を取得
+            // テキストコンテンツを取得し、改行や余分なスペースを削除して整形
+            // 例: "Ifrit [Gaia]" のような文字列を取得
             combinedServerString = serverElement.text().trim().replace(/[\n\r\t]/g, ' ').replace(/\s{2,}/g, ' ').trim();
         }
-        
+
         // 3. データのパース (例: "Ifrit [Gaia]" -> world="Ifrit", dataCenter="Gaia")
         let world = null;
         let dataCenter = null;
@@ -1386,19 +1399,19 @@ async function getLodestoneCharacterInfo(lodestoneId) {
             const dcMatch = combinedServerString.match(dcRegex);
 
             if (dcMatch && dcMatch.length === 3) {
-                world = dcMatch[1].trim();      
-                dataCenter = dcMatch[2].trim(); 
+                world = dcMatch[1].trim();
+                dataCenter = dcMatch[2].trim();
             } else {
                 // 形式が一致しなかった場合、全体をワールド名とし、DCは「不明」とする
                 world = combinedServerString;
-                dataCenter = '不明'; 
+                dataCenter = '不明';
                 console.warn(`Lodestone ID ${lodestoneId}: DC情報の抽出に失敗。全体をワールド名として処理: ${combinedServerString}`);
             }
         }
-        
+
         // 4. 結果の返却
         // 名前とワールドが取得できていれば成功
-        if (charName && world) { 
+        if (charName && world) {
             return { success: true, charName: charName, world: world, dataCenter: dataCenter };
         } else {
             // 情報が抽出できなかった場合
@@ -1411,11 +1424,11 @@ async function getLodestoneCharacterInfo(lodestoneId) {
         if (error.response) {
             const status = error.response.status;
             if (status === 404) {
-                 return { success: false, reason: "Lodestone IDに対応するキャラクターページが見つかりませんでした (404 Not Found)。" };
+                return { success: false, reason: "Lodestone IDに対応するキャラクターページが見つかりませんでした (404 Not Found)。" };
             } else if (status === 403) {
-                 return { success: false, reason: "Lodestoneからのデータ取得がブロックされました (403 Forbidden)。時間を置いて再試行してください。" };
+                return { success: false, reason: "Lodestoneからのデータ取得がブロックされました (403 Forbidden)。時間を置いて再試行してください。" };
             } else {
-                 return { success: false, reason: `Lodestoneアクセスエラー (HTTP ${status})。IDが正しいか確認してください。` };
+                return { success: false, reason: `Lodestoneアクセスエラー (HTTP ${status})。IDが正しいか確認してください。` };
             }
         }
         // ネットワークやその他の予期せぬエラー
@@ -1433,20 +1446,20 @@ client.on('ready', async () => {
 
     // --- スラッシュコマンドの登録処理 (グローバル登録) ---
     const rest = new REST({ version: '10' }).setToken(token);
-    
+
     try {
         console.log('スラッシュコマンドのグローバル登録を開始します。（反映に時間がかかる場合があります）');
-        
+
         await rest.put(
             Routes.applicationCommands(clientId),
             { body: commands },
         );
-        
+
         console.log('スラッシュコマンドの登録に成功しました。');
     } catch (error) {
         console.error('スラッシュコマンドの登録中にエラーが発生しました:', error);
     }
-    
+
     // 🔥 日次スケジューラを起動 だが、BOT再起動時に上手くいかないため一旦コメントアウト
     // startDailyScheduler();
 });
@@ -1458,14 +1471,14 @@ client.on('interactionCreate', async (interaction) => {
     const { commandName } = interaction;
     const userId = interaction.user.id;
     const userDocRef = doc(db, LINK_COLLECTION_NAME, userId);
-    
+
     // --- /link の処理 (埋め込みとアイコン画像を追加) --- 
     if (commandName === 'link') {
         await interaction.deferReply({ ephemeral: false });
 
         const lodestoneId = interaction.options.getString('lodestone_id');
         const discordUser = interaction.user;
-        
+
         if (!/^\d+$/.test(lodestoneId)) {
             // エラー時も埋め込みで返信
             const errorEmbed = new EmbedBuilder()
@@ -1476,7 +1489,7 @@ client.on('interactionCreate', async (interaction) => {
 
             return interaction.editReply({ embeds: [errorEmbed] });
         }
-        
+
         try {
             // getLodestoneCharacterInfoがiconUrlを返すように修正されていることが前提
             const infoResult = await getLodestoneCharacterInfo(lodestoneId);
@@ -1488,25 +1501,25 @@ client.on('interactionCreate', async (interaction) => {
                     world: infoResult.world,
                     dataCenter: infoResult.dataCenter,
                     linkedAt: new Date().toISOString(),
-                    discordTag: discordUser.tag 
+                    discordTag: discordUser.tag
                 };
-                
+
                 await setDoc(userDocRef, linkData);
-                
+
                 let roleMessage = '';
                 let channelMention = '';
-                
+
                 // ロール付与とチャンネル作成が可能な環境かチェック
                 if (interaction.member && interaction.guild) {
                     const guild = interaction.guild;
                     const charName = infoResult.charName;
-                    
+
                     // 1. キャラクター名ロールのオブジェクトを取得/作成 (チャンネル権限設定に必要)
                     const characterRole = await findOrCreateRole(guild, charName, FF14_COLOR_GOLD);
 
                     // 2. ロールをメンバーに付与 (ff14ロールも含む)
                     const assignedRoles = await assignCharacterRoles(interaction.member, charName);
-                    
+
                     if (assignedRoles && assignedRoles.length > 0) {
                         roleMessage = `キャラクター名ロールと「ff14」ロール（**${assignedRoles.join(', ')}**）を付与しました。`;
                     } else if (assignedRoles === null) {
@@ -1517,24 +1530,24 @@ client.on('interactionCreate', async (interaction) => {
 
                     // 3. プライベートチャンネルを作成/確認 (characterRoleが取得できた場合のみ)
                     if (characterRole) {
-                            const privateChannel = await findOrCreatePrivateCharacterChannel(
-                                guild, 
-                                charName, 
-                                characterRole, 
-                                discordUser
-                            );
-                            
-                            if (privateChannel) {
-                                channelMention = privateChannel.toString();
-                            } else {
-                                roleMessage += `\n⚠️ 専用チャンネルの作成/権限設定に失敗しました。`;
-                            }
+                        const privateChannel = await findOrCreatePrivateCharacterChannel(
+                            guild,
+                            charName,
+                            characterRole,
+                            discordUser
+                        );
+
+                        if (privateChannel) {
+                            channelMention = privateChannel.toString();
+                        } else {
+                            roleMessage += `\n⚠️ 専用チャンネルの作成/権限設定に失敗しました。`;
+                        }
                     }
 
                 } else {
-                     roleMessage = `⚠️ サーバー外での実行のため、ロール・チャンネルの処理はスキップされました。`;
+                    roleMessage = `⚠️ サーバー外での実行のため、ロール・チャンネルの処理はスキップされました。`;
                 }
-                
+
                 // 埋め込みメッセージの構築
                 const successEmbed = new EmbedBuilder()
                     .setColor(FF14_COLOR_GOLD) // FF14っぽい色
@@ -1553,7 +1566,7 @@ client.on('interactionCreate', async (interaction) => {
 
                 if (channelMention) {
                     successEmbed.addFields(
-                         { name: '専用チャンネル', value: `✅ ${channelMention} を作成/確認しました。`, inline: false }
+                        { name: '専用チャンネル', value: `✅ ${channelMention} を作成/確認しました。`, inline: false }
                     );
                 }
 
@@ -1569,17 +1582,17 @@ client.on('interactionCreate', async (interaction) => {
                     .setTitle('❌ Lodestone 紐づけ失敗')
                     .setDescription(`Lodestone ID \`${lodestoneId}\` の情報取得に失敗しました。`)
                     .addFields(
-                         { name: '理由', value: infoResult.reason, inline: false }
+                        { name: '理由', value: infoResult.reason, inline: false }
                     )
                     .setTimestamp();
-                    
+
                 return interaction.editReply({
                     embeds: [errorEmbed]
                 });
             }
         } catch (error) {
             console.error("致命的なエラーが発生しました (/linkコマンド):", error);
-            
+
             // 致命的なエラー時の埋め込み
             const fatalErrorEmbed = new EmbedBuilder()
                 .setColor(FF14_COLOR_RED)
@@ -1595,18 +1608,18 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // --- /unlink, /status, /record, /deleterecord, /today, /watchlist... の処理は変更なし ---
-if (commandName === 'unlink') {
+    if (commandName === 'unlink') {
         // Ephemeral（実行者のみ）で応答を待機
         await interaction.deferReply({ ephemeral: true });
 
         const member = interaction.member;
-        
+
         try {
             const docSnapshot = await getDoc(userDocRef);
 
             if (docSnapshot.exists()) {
                 const { charName } = docSnapshot.data();
-                
+
                 // 1. ロール削除処理
                 const charRole = member.guild.roles.cache.find(r => r.name === charName);
                 const ff14Role = member.guild.roles.cache.find(r => r.name === 'ff14');
@@ -1628,7 +1641,7 @@ if (commandName === 'unlink') {
                 if (rolesToRemove.length > 0) {
                     await member.roles.remove(rolesToRemove, 'Lodestone紐づけ解除に伴うロール削除');
                 }
-                
+
                 // 2. Firestoreから紐づけ情報を削除
                 await deleteDoc(userDocRef);
 
@@ -1643,7 +1656,7 @@ if (commandName === 'unlink') {
                         inline: false
                     })
                     .setTimestamp();
-                
+
                 return interaction.editReply({ embeds: [embed] });
 
             } else {
@@ -1657,7 +1670,7 @@ if (commandName === 'unlink') {
             }
         } catch (error) {
             console.error("リンク解除処理でエラーが発生しました:", error);
-            
+
             // 5. エラー時の埋め込みメッセージ
             const embed = new EmbedBuilder()
                 .setTitle('🚨 処理エラー')
@@ -1677,7 +1690,7 @@ if (commandName === 'unlink') {
     if (commandName === 'status') {
         // Ephemeral: false（全員に見える）で応答を待機
         await interaction.deferReply({ ephemeral: false });
-        
+
         try {
             const docSnapshot = await getDoc(userDocRef);
 
@@ -1687,18 +1700,18 @@ if (commandName === 'unlink') {
                 const lodestoneId = linkInfo.lodestoneId;
 
                 // ワールド/DC情報を整形
-                const worldInfo = linkInfo.world && linkInfo.dataCenter 
-                    ? `${linkInfo.world} (DC: ${linkInfo.dataCenter})` 
-                    : linkInfo.world || linkInfo.server || '不明'; 
-                
+                const worldInfo = linkInfo.world && linkInfo.dataCenter
+                    ? `${linkInfo.world} (DC: ${linkInfo.dataCenter})`
+                    : linkInfo.world || linkInfo.server || '不明';
+
                 // 紐づけ日時を整形
-                const linkedAt = linkInfo.linkedAt 
-                    ? new Date(linkInfo.linkedAt).toLocaleString('ja-JP') 
+                const linkedAt = linkInfo.linkedAt
+                    ? new Date(linkInfo.linkedAt).toLocaleString('ja-JP')
                     : '不明';
 
                 // LodestoneのプロフィールURL
                 const lodestoneUrl = `https://jp.finalfantasyxiv.com/lodestone/character/${lodestoneId}/`;
-                
+
                 // 成功時の埋め込みメッセージ
                 const embed = new EmbedBuilder()
                     .setTitle(`🛡️ ${charName} さんの現在の紐づけ情報`)
@@ -1706,30 +1719,30 @@ if (commandName === 'unlink') {
                     .setColor(FF14_COLOR_GOLD)
                     .setThumbnail(linkInfo.iconUrl || 'https://placehold.co/100x100/AA946F/ffffff?text=FF14') // アイコンURLがあれば使用
                     .addFields(
-                        { 
-                            name: 'キャラクター名', 
-                            value: charName, 
-                            inline: true 
+                        {
+                            name: 'キャラクター名',
+                            value: charName,
+                            inline: true
                         },
-                        { 
-                            name: 'ワールド / データセンター', 
-                            value: worldInfo, 
-                            inline: true 
+                        {
+                            name: 'ワールド / データセンター',
+                            value: worldInfo,
+                            inline: true
                         },
-                        { 
-                            name: 'Lodestone ID', 
-                            value: `\`${lodestoneId}\``, 
-                            inline: true 
+                        {
+                            name: 'Lodestone ID',
+                            value: `\`${lodestoneId}\``,
+                            inline: true
                         },
-                        { 
-                            name: 'Discord User', 
-                            value: `<@${interaction.user.id}> (${interaction.user.tag})`, 
-                            inline: false 
+                        {
+                            name: 'Discord User',
+                            value: `<@${interaction.user.id}> (${interaction.user.tag})`,
+                            inline: false
                         },
-                        { 
-                            name: '紐づけ日時', 
-                            value: linkedAt, 
-                            inline: false 
+                        {
+                            name: '紐づけ日時',
+                            value: linkedAt,
+                            inline: false
                         }
                     )
                     .setFooter({ text: '情報更新には /link コマンドを再実行してください。' })
@@ -1753,7 +1766,7 @@ if (commandName === 'unlink') {
             }
         } catch (error) {
             console.error("ステータス確認処理でエラーが発生しました:", error);
-            
+
             // エラー時の埋め込みメッセージ
             const embed = new EmbedBuilder()
                 .setTitle('🚨 処理エラー')
@@ -1769,13 +1782,13 @@ if (commandName === 'unlink') {
             return interaction.editReply({ embeds: [embed] });
         }
     }
-    
-if (commandName === 'record') {
+
+    if (commandName === 'record') {
         await interaction.deferReply({ ephemeral: false });
 
         const userId = interaction.user.id;
         const linkDoc = await getDoc(userDocRef);
-        
+
         // 1. リンク情報がない場合の処理を埋め込み化
         if (!linkDoc.exists() || !linkDoc.data().world || !linkDoc.data().dataCenter) {
             const embed = new EmbedBuilder()
@@ -1786,9 +1799,9 @@ if (commandName === 'record') {
 
             return interaction.editReply({ embeds: [embed] });
         }
-        
+
         const linkInfo = linkDoc.data();
-        
+
         const rank = interaction.options.getInteger('rank');
         const job = interaction.options.getString('job');
         const kills = interaction.options.getInteger('kills');
@@ -1800,7 +1813,7 @@ if (commandName === 'record') {
 
         try {
             const resultColRef = collection(db, RESULT_COLLECTION_NAME);
-            
+
             const recordData = {
                 lodestoneId: linkInfo.lodestoneId,
                 charName: linkInfo.charName,
@@ -1824,50 +1837,50 @@ if (commandName === 'record') {
 
             const docRef = await addDoc(resultColRef, recordData);
             const recordId = docRef.id;
-            
+
             // ジョブ情報 (JOB_CHOICES, JOB_EMOJISは既存のものを使用)
             const jobChoice = JOB_CHOICES.find(c => c.value === job);
             const jobName = jobChoice ? jobChoice.name : job;
-            const jobEmoji = JOB_EMOJIS[job] || '✨'; 
+            const jobEmoji = JOB_EMOJIS[job] || '✨';
 
             // 2. 成功時の応答を埋め込み化
             const embed = new EmbedBuilder()
                 .setTitle('✅ フロントライン リザルトを記録しました！')
                 .setColor(FF14_COLOR_GOLD)
                 .addFields(
-                    { 
-                        name: 'キャラクター', 
-                        value: `${linkInfo.charName} (${linkInfo.dataCenter}DC)`, 
-                        inline: true 
+                    {
+                        name: 'キャラクター',
+                        value: `${linkInfo.charName} (${linkInfo.dataCenter}DC)`,
+                        inline: true
                     },
-                    { 
-                        name: '順位', 
-                        value: `**${rank}位**`, 
-                        inline: true 
+                    {
+                        name: '順位',
+                        value: `**${rank}位**`,
+                        inline: true
                     },
-                    { 
-                        name: 'ジョブ', 
-                        value: `${jobEmoji} ${jobName}`, 
-                        inline: true 
+                    {
+                        name: 'ジョブ',
+                        value: `${jobEmoji} ${jobName}`,
+                        inline: true
                     },
-                    { 
-                        name: 'K/D/A', 
-                        value: `${kills} / ${deaths} / ${assists}`, 
-                        inline: true 
+                    {
+                        name: 'K/D/A',
+                        value: `${kills} / ${deaths} / ${assists}`,
+                        inline: true
                     },
-                    { 
-                        name: '与ダメージ / 被ダメージ', 
-                        value: `${damageDealt.toLocaleString()} / ${damageTaken.toLocaleString()}`, 
-                        inline: true 
+                    {
+                        name: '与ダメージ / 被ダメージ',
+                        value: `${damageDealt.toLocaleString()} / ${damageTaken.toLocaleString()}`,
+                        inline: true
                     },
-                    { 
-                        name: '与回復', 
-                        value: healingDone.toLocaleString(), 
-                        inline: true 
+                    {
+                        name: '与回復',
+                        value: healingDone.toLocaleString(),
+                        inline: true
                     }
                 )
-                .setFooter({ 
-                    text: `記録ID: ${recordId} | 削除には /deleterecord を使用`, 
+                .setFooter({
+                    text: `記録ID: ${recordId} | 削除には /deleterecord を使用`,
                 })
                 .setTimestamp(); // 記録時刻はDiscordが自動で付与
 
@@ -1882,10 +1895,10 @@ if (commandName === 'record') {
             });
 
             return;
-            
+
         } catch (error) {
             console.error("リザルト記録処理でエラーが発生しました (/recordコマンド):", error);
-            
+
             // 3. 致命的なエラー時の応答を埋め込み化
             const embed = new EmbedBuilder()
                 .setTitle('🚨 記録処理エラー')
@@ -1901,12 +1914,12 @@ if (commandName === 'record') {
             return interaction.editReply({ embeds: [embed] });
         }
     }
-    
+
     if (commandName === 'deleterecord') {
         await interaction.deferReply({ ephemeral: true });
 
         const recordId = interaction.options.getString('record_id');
-        const resultDocRef = doc(db, RESULT_COLLECTION_NAME, recordId); 
+        const resultDocRef = doc(db, RESULT_COLLECTION_NAME, recordId);
 
         let dataToDelete = null;
 
@@ -1932,7 +1945,7 @@ if (commandName === 'record') {
                     .setColor(FF14_COLOR_RED);
                 return interaction.editReply({ embeds: [embed] });
             }
-            
+
             // 記録を削除
             await deleteDoc(resultDocRef);
 
@@ -1960,13 +1973,13 @@ if (commandName === 'record') {
             // 3. 成功
             const jobCode = dataToDelete.job;
             const jobName = JOB_CHOICES.find(c => c.value === jobCode)?.name || jobCode;
-            const jobEmoji = JOB_EMOJIS[jobCode] || '✨'; 
+            const jobEmoji = JOB_EMOJIS[jobCode] || '✨';
             const rank = dataToDelete.rank;
-            
-            const deleteTime = dataToDelete.recordedAt && dataToDelete.recordedAt.toDate 
-                                 ? dataToDelete.recordedAt.toDate().toLocaleString('ja-JP') 
-                                 : '不明';
-            
+
+            const deleteTime = dataToDelete.recordedAt && dataToDelete.recordedAt.toDate
+                ? dataToDelete.recordedAt.toDate().toLocaleString('ja-JP')
+                : '不明';
+
             const embed = new EmbedBuilder()
                 .setTitle(`✅ リザルト記録を削除しました (${rank}位, ${jobName})`)
                 .setColor(FF14_COLOR_GOLD)
@@ -1999,7 +2012,7 @@ if (commandName === 'record') {
         }
     }
 
-// ★★★ 今日のフロントラインマップコマンドの処理 (/today) --- 修正箇所 ★★★
+    // ★★★ 今日のフロントラインマップコマンドの処理 (/today) --- 修正箇所 ★★★
     // else if (interaction.commandName === 'today') {
     //     await interaction.deferReply({ ephemeral: false });
 
@@ -2009,15 +2022,15 @@ if (commandName === 'record') {
 
     //     // 現在のマップインデックスを見つける
     //     const currentMapIndex = FRONTLINE_ROTATION.findIndex(m => m.name === currentMap.name);
-        
+
     //     // 次のマップインデックスを計算
     //     const nextMapIndex = (currentMapIndex + 1) % FRONTLINE_ROTATION.length;
     //     const nextMap = FRONTLINE_ROTATION[nextMapIndex];
-        
+
     //     // メタデータのドキュメント参照を取得
     //     const db = getFirestore(client.firebaseApp);
     //     const metaDocRef = doc(db, META_COLLECTION_NAME, 'announcement');
-        
+
     //     // 埋め込みメッセージの構築に必要な変数
     //     let channelStatusMessage = '✅ このチャンネルは既にアナウンス先に設定されています。';
     //     let errorOccurred = false;
@@ -2074,11 +2087,11 @@ if (commandName === 'record') {
 
     //     await interaction.editReply({ embeds: [embed] });
     // }
-    
+
     // --- /watchlist_add の処理 (登録とメッセージ削除) ---
     if (commandName === 'watchlist_add') {
         // コマンドメッセージと返信メッセージの両方を削除するため、一時的な返信はしない (deferReplyしない)
-        
+
         // ★修正点1: 名と姓を別々に取得
         const firstNameInput = interaction.options.getString('first_name');
         const lastNameInput = interaction.options.getString('last_name');
@@ -2093,9 +2106,9 @@ if (commandName === 'record') {
             const firstName = capitalize(firstNameInput);
             const lastName = capitalize(lastNameInput);
             const characterName = `${firstName} ${lastName}`;
-            
+
             const watchlistColRef = collection(db, WATCHLIST_COLLECTION_NAME);
-            
+
             const watchlistItem = {
                 characterName: characterName, // 結合後の名前を保存
                 firstName: firstName,         // 名を保存（参考情報として）
@@ -2117,20 +2130,20 @@ if (commandName === 'record') {
                 .setColor(FF14_COLOR_GREEN) // ウォッチリストは緑色に設定
                 .setDescription(`プレイヤー **${characterName}** (${worldName}) をリストに登録しました。`)
                 .addFields(
-                    { 
-                        name: '登録者', 
-                        value: interaction.user.tag, 
-                        inline: true 
+                    {
+                        name: '登録者',
+                        value: interaction.user.tag,
+                        inline: true
                     },
-                    { 
-                        name: '登録ID', 
-                        value: `\`${recordId}\``, 
-                        inline: true 
+                    {
+                        name: '登録ID',
+                        value: `\`${recordId}\``,
+                        inline: true
                     },
-                    { 
-                        name: 'メモ', 
-                        value: memo || 'なし', 
-                        inline: false 
+                    {
+                        name: 'メモ',
+                        value: memo || 'なし',
+                        inline: false
                     }
                 )
                 .setFooter({
@@ -2154,11 +2167,11 @@ if (commandName === 'record') {
                     // ただし、Discord.jsのInteraction Replyの仕様上、interaction.deleteReply()が
                     // interactionをトリガーとしたメッセージを削除する最も安全な方法。
                     await interaction.deleteReply().catch(err => console.warn(`返信メッセージ削除失敗 (Interaction deleteReply): ${err.message}`));
-                    
+
                     // コマンドメッセージを削除 (interaction.channel.messages.deleteを使用)
                     // interaction.channel.messages.delete(interaction.id) は使用者が実行したメッセージを削除しようとする
                     // interaction.reply()のメッセージがinteraction.deleteReply()で削除されるため、ここでは省略
-                    
+
                 } catch (error) {
                     console.error("ウォッチリスト登録後のメッセージ削除中にエラー:", error);
                 }
@@ -2177,14 +2190,14 @@ if (commandName === 'record') {
                 })
                 .setColor(FF14_COLOR_RED);
 
-            await interaction.reply({ 
+            await interaction.reply({
                 embeds: [embed],
                 ephemeral: true // エラーメッセージは一時的に表示
             }).catch(() => null);
         }
     }
 
-    
+
     // --- /watchlist_delete の処理 (名前指定削除) ---
     if (commandName === 'watchlist_delete') {
         await interaction.deferReply({ ephemeral: false });
@@ -2192,35 +2205,35 @@ if (commandName === 'record') {
         const firstNameInput = interaction.options.getString('first_name');
         const lastNameInput = interaction.options.getString('last_name');
         // world_nameはオプション
-        const worldNameInput = interaction.options.getString('world_name'); 
+        const worldNameInput = interaction.options.getString('world_name');
 
         try {
             const firstName = capitalize(firstNameInput);
             const lastName = capitalize(lastNameInput);
             const characterName = `${firstName} ${lastName}`;
             const worldName = worldNameInput ? worldNameInput.trim() : null;
-            
+
             const watchlistColRef = collection(db, WATCHLIST_COLLECTION_NAME);
-            
+
             // 1. 検索クエリの作成
             let q = query(watchlistColRef, where("characterName", "==", characterName));
-            
+
             // world_nameが指定された場合は、さらに条件を追加して絞り込む
             if (worldName) {
                 // 複合クエリ: characterName AND worldName
-                q = query(watchlistColRef, 
-                          where("characterName", "==", characterName),
-                          where("worldName", "==", worldName) 
-                         );
+                q = query(watchlistColRef,
+                    where("characterName", "==", characterName),
+                    where("worldName", "==", worldName)
+                );
             }
 
             // 2. 検索実行
             const querySnapshot = await getDocs(q);
-            
+
             if (querySnapshot.empty) {
                 let notFoundMessage = `❌ **削除失敗:** ウォッチリストに**${characterName}**という名前のプレイヤーは見つかりませんでした。`;
                 if (worldName) {
-                     notFoundMessage += ` (ワールド名: ${worldName} も含む)`;
+                    notFoundMessage += ` (ワールド名: ${worldName} も含む)`;
                 }
                 return interaction.editReply(notFoundMessage);
             }
@@ -2236,26 +2249,26 @@ if (commandName === 'record') {
             });
 
             await Promise.all(deletePromises);
-            
+
             const deletedCount = deletedItems.length;
 
             // 4. 成功メッセージの作成
-            const deletedList = deletedItems.map(item => 
+            const deletedList = deletedItems.map(item =>
                 `・**${item.characterName}** (${item.worldName}) - メモ: ${item.memo}`
             ).join('\n');
 
             let successMessage = `✅ **削除成功:** ウォッチリストから以下の${deletedCount}件のプレイヤーを削除しました。\n\n`;
             successMessage += deletedList;
-            
+
             if (worldName && deletedCount > 0) {
-                 successMessage += `\n\n*（ワールド名 ${worldName} の条件で絞り込みました）*`;
-            } 
+                successMessage += `\n\n*（ワールド名 ${worldName} の条件で絞り込みました）*`;
+            }
 
 
             // 5. 最新のリストメッセージを削除
             const metaDoc = await getDoc(watchlistMetaDocRef);
             const lastMessageId = metaDoc.exists() ? metaDoc.data().lastWatchlistMessageId : null;
-            
+
             if (lastMessageId && metaDoc.data().targetChannelId === interaction.channelId) {
                 try {
                     const messageChannel = await client.channels.fetch(interaction.channelId);
@@ -2281,13 +2294,13 @@ if (commandName === 'record') {
         }
     }
 
-// --- ★新規追加: /watchlist_check の処理 ---
+    // --- ★新規追加: /watchlist_check の処理 ---
     if (commandName === 'watchlist_check') {
         await interaction.deferReply({ ephemeral: false });
 
         const firstNameInput = interaction.options.getString('first_name');
         const lastNameInput = interaction.options.getString('last_name');
-        const worldNameInput = interaction.options.getString('world_name'); 
+        const worldNameInput = interaction.options.getString('world_name');
 
         try {
             // capitalize関数は他の場所で定義されていることを前提とする
@@ -2295,25 +2308,25 @@ if (commandName === 'record') {
             const lastName = capitalize(lastNameInput);
             const characterName = `${firstName} ${lastName}`;
             const worldName = worldNameInput ? worldNameInput.trim() : null;
-            
+
             // db, WATCHLIST_COLLECTION_NAMEは他の場所で定義されていることを前提とする
             const watchlistColRef = collection(db, WATCHLIST_COLLECTION_NAME);
-            
+
             // 1. 検索クエリの作成: キャラクター名で検索
             let q = query(watchlistColRef, where("characterName", "==", characterName));
-            
+
             // world_nameが指定された場合は、さらに条件を追加して絞り込む
             if (worldName) {
                 // 複合クエリ: characterName AND worldName
-                q = query(watchlistColRef, 
-                          where("characterName", "==", characterName),
-                          where("worldName", "==", worldName) 
-                         );
+                q = query(watchlistColRef,
+                    where("characterName", "==", characterName),
+                    where("worldName", "==", worldName)
+                );
             }
 
             // 2. 検索実行
             const querySnapshot = await getDocs(q);
-            
+
             if (querySnapshot.empty) {
                 // 見つからなかった場合の埋め込み
                 const notFoundEmbed = new EmbedBuilder()
@@ -2326,22 +2339,22 @@ if (commandName === 'record') {
                     })
                     .setColor(FF14_COLOR_GREEN) // クリーンは緑色
                     .setTimestamp();
-                
+
                 return interaction.editReply({ embeds: [notFoundEmbed] });
             }
 
             // 3. 見つかった情報をEmbedのフィールドとして整形
             const fields = querySnapshot.docs.map((doc, index) => {
                 const data = doc.data();
-                const recordTime = data.recordedAt && data.recordedAt.toDate 
-                                        ? data.recordedAt.toDate().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) 
-                                        : '不明';
-                
+                const recordTime = data.recordedAt && data.recordedAt.toDate
+                    ? data.recordedAt.toDate().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '不明';
+
                 return {
                     name: `🚨 登録 #${index + 1}: ${data.worldName ? `(${data.worldName})` : ''}`,
                     value: `**メモ:** ${data.memo || 'なし'}\n` +
-                           `**登録者:** \`${data.recordedByTag}\`\n` +
-                           `**登録日時:** ${recordTime} (ID: \`${doc.id}\`)`,
+                        `**登録者:** \`${data.recordedByTag}\`\n` +
+                        `**登録日時:** ${recordTime} (ID: \`${doc.id}\`)`,
                     inline: false
                 };
             });
@@ -2353,7 +2366,7 @@ if (commandName === 'record') {
                 .setColor(FF14_COLOR_RED) // 警戒は赤色
                 .addFields(fields)
                 .setFooter({
-                    text: worldName 
+                    text: worldName
                         ? `ワールド ${worldName} の条件で検索しました。`
                         : `ワールド条件なしで検索しました。`
                 })
@@ -2364,7 +2377,7 @@ if (commandName === 'record') {
 
         } catch (error) {
             console.error("ウォッチリストチェック処理でエラーが発生しました (/watchlist_checkコマンド):", error);
-            
+
             // エラーメッセージの埋め込み
             const errorEmbed = new EmbedBuilder()
                 .setTitle('❌ ウォッチリスト・チェック・エラー')
@@ -2376,13 +2389,13 @@ if (commandName === 'record') {
             return interaction.editReply({ embeds: [errorEmbed] });
         }
     }
-// ★★★ 軍師報告コマンドの処理 (/strategist_report) --- 埋め込み対応 ★★★
+    // ★★★ 軍師報告コマンドの処理 (/strategist_report) --- 埋め込み対応 ★★★
     if (interaction.commandName === 'strategist_report') { // 既存のifをelse ifに変更
         // 処理が終わるまで待機し、全員に見えるように返信を準備
-        await interaction.deferReply({ ephemeral: false }); 
+        await interaction.deferReply({ ephemeral: false });
 
         const rank = interaction.options.getInteger('rank');
-        
+
         // getString() に戻し、?? '' で null を確実に回避
         const first_name_raw = interaction.options.getString('first_name') ?? '';
         const last_name_raw = interaction.options.getString('last_name') ?? '';
@@ -2408,10 +2421,10 @@ if (commandName === 'record') {
             await interaction.editReply({ embeds: [errorEmbed] });
             return;
         }
-        
+
         // データベースに保存するフルネームも頭文字大文字の形式で作成
-        const full_name = `${first_name} ${last_name}`; 
-        
+        const full_name = `${first_name} ${last_name}`;
+
         // getFirestore(client.firebaseApp) の代わりに、グローバルに定義されている db を使用
         // ※ 既に `db` は`getFirestore(app)`で初期化されている前提
         // const db = getFirestore(client.firebaseApp); // この行はコメントアウト
@@ -2421,9 +2434,9 @@ if (commandName === 'record') {
             // STRATEGIST_REPORT_COLLECTION_NAMEは他の場所で定義されていることを前提とする
             await addDoc(collection(db, STRATEGIST_REPORT_COLLECTION_NAME), {
                 reported_by_user_id: interaction.user.id,
-                reported_by_username: interaction.user.tag, 
-                strategist_name: first_name, 
-                strategist_surname: last_name, 
+                reported_by_username: interaction.user.tag,
+                strategist_name: first_name,
+                strategist_surname: last_name,
                 strategist_full_name: full_name, // 頭文字大文字のフルネームを保存
                 rank: rank,
                 is_win: rank === 1,
@@ -2450,20 +2463,20 @@ if (commandName === 'record') {
 
         } catch (error) {
             console.error('軍師報告の保存中にエラーが発生しました:', error);
-            
+
             // エラーメッセージを埋め込みで返す
             const errorEmbed = new EmbedBuilder()
                 .setTitle('❌ 軍師報告エラー')
                 .setDescription(`軍師報告の記録中にエラーが発生しました。\nエラー詳細: \`${error.message}\``)
                 .setColor(FF14_COLOR_RED)
                 .setTimestamp();
-            
+
             await interaction.editReply({ embeds: [errorEmbed] });
         }
         return;
     }
-    
-    else if (interaction.commandName === 'strategist_search') { // 既存のifをelse ifに変更
+
+    if (interaction.commandName === 'strategist_search') { // 既存のifをelse ifに変更
         // 処理が終わるまで待機し、全員に見えるように返信を準備
         await interaction.deferReply({ ephemeral: false });
 
@@ -2492,26 +2505,26 @@ if (commandName === 'record') {
             await interaction.editReply({ embeds: [errorEmbed] });
             return;
         }
-        
+
         // 検索キーも頭文字大文字の形式で作成: [名前] [苗字]
-        const search_full_name = `${search_first_name} ${search_last_name}`; 
-        
+        const search_full_name = `${search_first_name} ${search_last_name}`;
+
         try {
             // ★★★ 修正箇所: 検索処理を strategistSearchCommand に委譲 ★★★
             // ※ STRATEGIST_REPORT_COLLECTION_NAME と RESULT_COLLECTION_NAME の両方を検索するロジックに後で変更するかもしれません。
             //    ここでは、ACTデータが保存されている RESULT_COLLECTION_NAME のレコードから、
             //    軍師フラグ (`isStrategist`) と名前 (`name`) で検索します。
 
-            const responseMessage = await strategistSearchCommand(search_full_name); 
+            const responseMessage = await strategistSearchCommand(search_full_name);
 
             await interaction.editReply(responseMessage);
 
         } catch (error) {
             // ログにエラーのタイプとメッセージを必ず出力する
-            console.error('軍師検索処理中にエラーが発生しました:', error.name, error.message); 
+            console.error('軍師検索処理中にエラーが発生しました:', error.name, error.message);
             // 詳細なエラーメッセージをユーザーに返す
             const errorMessage = `❌ 軍師検索中に予期せぬエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 100)}\n\`\`\`\nログを確認してください。`;
-            
+
             try {
                 await interaction.editReply({ content: errorMessage });
             } catch (e) {
@@ -2523,7 +2536,63 @@ if (commandName === 'record') {
         }
         return;
     }
-        // --- 【★ /act_record コマンドの処理 ★】 ---
+    if (commandName === 'delete_match') {
+        const matchId = interaction.options.getString('match_id');
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const matchRef = doc(db, 'match_summaries', matchId);
+            const matchSnap = await getDoc(matchRef);
+
+            if (!matchSnap.exists()) {
+                return interaction.editReply({
+                    content: '❌ 指定された試合IDは存在しません。',
+                });
+            }
+
+            const matchData = matchSnap.data();
+            const requesterId = interaction.user.id;
+
+            const isAdmin = requesterId === ADMIN_DISCORD_ID;
+            const isOwner = matchData.recordedBy === requesterId;
+
+            if (!isAdmin && !isOwner) {
+                return interaction.editReply({
+                    content: '⛔ この試合を削除する権限がありません。',
+                });
+            }
+
+            // --- frontline_results 側を削除 ---
+            const resultsQuery = query(
+                collection(db, 'frontline_results'),
+                where('matchId', '==', matchId)
+            );
+
+            const resultsSnap = await getDocs(resultsQuery);
+
+            const batch = writeBatch(db);
+            resultsSnap.forEach(docSnap => {
+                batch.delete(docSnap.ref);
+            });
+
+            // --- match_summaries を削除 ---
+            batch.delete(matchRef);
+
+            await batch.commit();
+
+            return interaction.editReply({
+                content: `🗑️ 試合データ（${matchId}）を完全に削除しました。`,
+            });
+
+        } catch (error) {
+            console.error('試合削除エラー:', error);
+            return interaction.editReply({
+                content: '🚨 削除中にエラーが発生しました。ログを確認してください。',
+            });
+        }
+    }
+
+    // --- 【★ /act_record コマンドの処理 ★】 ---
     if (interaction.commandName === 'act_record') {
         // 新しいオプションを全て取得
         const myTeam = interaction.options.getString('my_team');
@@ -2534,13 +2603,13 @@ if (commandName === 'record') {
         const myAssists = interaction.options.getInteger('my_assists');
         const strategistFirst = interaction.options.getString('strategist_first');
         const strategistLast = interaction.options.getString('strategist_last');
-        
+
         try {
             // 1. 返信を遅延させる (ephemeral: true を削除し、メッセージを全員に公開)
-            await interaction.deferReply(); 
-            
+            await interaction.deferReply();
+
             // 2. 添付ファイルを含むメッセージを探す (limitを10に増やして確実に見つける)
-            const messages = await interaction.channel.messages.fetch({ limit: 10 }); 
+            const messages = await interaction.channel.messages.fetch({ limit: 10 });
             const lastMessage = messages.find(
                 m => m.author.id === interaction.user.id && m.attachments.size > 0
             );
@@ -2563,7 +2632,7 @@ if (commandName === 'record') {
             // 3. ACTデータ処理ロジックを実行
             // 必要な引数を全て渡す
             const responseMessage = await actRecordCommand(
-                interaction.user.id, 
+                interaction.user.id,
                 myTeam,
                 mPoint,
                 tPoint,
@@ -2571,9 +2640,9 @@ if (commandName === 'record') {
                 myKills,
                 myAssists,
                 attachmentContent,
-                strategistFirst, 
+                strategistFirst,
                 strategistLast
-            ); 
+            );
 
             // 4. 結果をユーザーに返信 (オブジェクトをそのまま渡す)
             await interaction.editReply(responseMessage);
@@ -2581,10 +2650,10 @@ if (commandName === 'record') {
         } catch (error) {
             console.error('ACT記録処理中に発生した元のエラー:', error.name, error.message);
             console.error('スタックトレース:', error.stack);
-            
+
             try {
-                await interaction.editReply({ 
-                    content: `❌ ACT記録中に予期せぬエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 150)}\n\`\`\`\nログを確認してください。` 
+                await interaction.editReply({
+                    content: `❌ ACT記録中に予期せぬエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 150)}\n\`\`\`\nログを確認してください。`
                 });
             } catch (e) {
                 console.error("editReplyの再試行中にエラーが発生しました:", e);
@@ -2592,7 +2661,7 @@ if (commandName === 'record') {
         }
         return;
     }
-});    
+});
 
 const port = process.env.PORT || 3000;
 
@@ -2611,20 +2680,19 @@ if (token === 'YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE') {
 } else {
     // ログイン処理を実行
     setTimeout(() => {
-    
-    console.log('--- START: Discord Login Process ---');
-    client.login(token)
-        .then(() => {
-            // ログイン成功後、メッセージ出力
-            console.log('--- SUCCESS: Discord Login Sent ---');
-        })
-        .catch(error => {
-            // ログイン自体が失敗した場合、強制終了してRenderに再起動を促す
-            console.error('--- FATAL: Discord Login Failed ---', error);
-            process.exit(1); 
-        });
 
-}, 2000);
+        console.log('--- START: Discord Login Process ---');
+        client.login(token)
+            .then(() => {
+                // ログイン成功後、メッセージ出力
+                console.log('--- SUCCESS: Discord Login Sent ---');
+            })
+            .catch(error => {
+                // ログイン自体が失敗した場合、強制終了してRenderに再起動を促す
+                console.error('--- FATAL: Discord Login Failed ---', error);
+                process.exit(1);
+            });
+
+    }, 2000);
 
 }
-
