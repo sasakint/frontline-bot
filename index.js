@@ -2750,7 +2750,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // --- 【★ /act_record コマンドの処理 ★】 ---
-    if (interaction.commandName === 'act_record') {
+    if (interaction.isChatInputCommand() && interaction.commandName === 'act_record') {
         const myTeam = interaction.options.getString('my_team');
         const mPoint = interaction.options.getInteger('maelstrom_points');
         const tPoint = interaction.options.getInteger('twin_adders_points');
@@ -2761,10 +2761,9 @@ client.on('interactionCreate', async (interaction) => {
         const strategistLast = interaction.options.getString('strategist_last');
 
         try {
-            // 1. 返信を遅延させて3秒ルールを回避 (deferReply)
             await interaction.deferReply();
+            console.log('  -> Command deferred successfully.');
 
-            // 2. 直近のメッセージから添付ファイル(CSV/TXT)を探す
             const messages = await interaction.channel.messages.fetch({ limit: 10 });
             const lastMessage = messages.find(
                 m => m.author.id === interaction.user.id && m.attachments.size > 0
@@ -2780,11 +2779,9 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (!attachmentContent) {
-                await interaction.editReply({ content: "❌ エラー: ファイルが見つかりませんでした。コマンド実行前にCSVファイルをアップロードしてください。" });
-                return;
+                return await interaction.editReply({ content: "❌ エラー: CSVファイルが見つかりませんでした。" });
             }
 
-            // 3. コマンドロジックを実行 (1400点なら内部で pending に保存しボタンを返す)
             const responseMessage = await actRecordCommand(
                 interaction.user.id,
                 myTeam,
@@ -2798,21 +2795,19 @@ client.on('interactionCreate', async (interaction) => {
                 strategistLast
             );
 
-            // 4. 結果を返信 (ボタンまたはリザルトEmbed)
             await interaction.editReply(responseMessage);
             console.log('  -> Initial response sent (may contain buttons).');
 
         } catch (error) {
-            console.error('act_record 処理エラー:', error);
+            console.error('  !! Command Error:', error);
             try {
-                await interaction.editReply({
-                    content: `❌ 処理中にエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 150)}\n\`\`\``
-                });
+                await interaction.editReply({ content: `❌ 処理中にエラーが発生しました: ${error.message}` });
             } catch (e) { /* ignore */ }
         }
         return;
     }
-    // --- フィールド選択ボタンの処理 ---
+
+    // --- ボタン（フィールド選択）の処理 ---
     if (interaction.isButton()) {
         const userId = interaction.user.id;
         const customId = interaction.customId;
@@ -2820,34 +2815,37 @@ client.on('interactionCreate', async (interaction) => {
         console.log(`[Button] ID: ${customId}, User: ${userId}`);
 
         // 判定対象のボタンかチェック
-        if (!['field_select_onsal', 'field_select_warco'].includes(customId)) return;
+        if (!['field_select_onsal', 'field_select_warco'].includes(customId)) {
+            console.log('  -> Not a target button ID, skipping.');
+            return;
+        }
 
         try {
             // 1. 一時保存データの取得
             const pending = pendingActRecords.get(userId);
 
-            // 2. データの存在確認（ここで落ちないようにガード）
+            // 2. データの存在確認（ここで落ちないようにガードを徹底）
             if (!pending) {
-                console.warn(`  !! No pending data found for user ${userId}`);
+                console.warn(`  !! No pending data found for user ${userId}. (Data might have expired or Map is cleared)`);
                 return await interaction.update({ 
-                    content: '❌ エラー: 記録データが期限切れか見つかりません。', 
+                    content: '❌ エラー: 記録データが見つかりません。もう一度 `/act_record` からやり直してください。', 
                     components: [] 
-                });
+                }).catch(err => console.error('  !! Failed to update error message:', err));
             }
 
-            // 3. 本人確認
-            if (userId !== pending.userId) {
-                console.warn(`  !! User mismatch: Pending=${pending.userId}, Interaction=${userId}`);
+            // 3. 本人確認 (オプショナルチェイニングを使用して undefined エラーを防止)
+            if (userId !== (pending?.userId || '')) {
+                console.warn(`  !! User mismatch: Pending=${pending?.userId}, Interaction=${userId}`);
                 return await interaction.reply({
                     content: '❌ 本人のみが操作できます。',
                     flags: 64
-                });
+                }).catch(err => console.error('  !! Failed to send reply:', err));
             }
 
             // 4. フィールド名の決定
             const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
 
-            // 5. 3秒ルール回避のための即時更新
+            // 5. 3秒ルール回避のための即時更新 (保存処理の前に必ず呼ぶ)
             console.log(`  -> Field selected: ${fieldName}. Updating UI...`);
             await interaction.update({
                 content: `✅ **${fieldName}** を選択しました。保存処理中です...`,
@@ -2856,6 +2854,7 @@ client.on('interactionCreate', async (interaction) => {
 
             // 6. 保存処理の実行
             console.log('  -> Starting continueActRecord...');
+            // 引数の構造が continueActRecord の定義と合っているか再確認
             const resultMessage = await continueActRecord({
                 ...pending,
                 userId: userId,
@@ -2868,17 +2867,17 @@ client.on('interactionCreate', async (interaction) => {
             console.log('  -> Save complete and followUp sent.');
 
         } catch (error) {
-            console.error('  !! Button Process Error:', error);
-            // エラーを Discord 上に表示させて原因を特定しやすくする
+            console.error('  !! CRITICAL Button Process Error:', error);
+            // エラー時もプロセスを落とさないようキャッチして通知
             try {
-                const errorMessage = { content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.stack.substring(0, 500)}\n\`\`\`` };
+                const errorMessage = { content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\`` };
                 if (interaction.replied || interaction.deferred) {
                     await interaction.followUp(errorMessage);
                 } else {
                     await interaction.update({ ...errorMessage, components: [] });
                 }
             } catch (e) {
-                console.error('  !! Failed to send error message to user:', e);
+                console.error('  !! Double Failure: Failed to send error message to user:', e);
             }
         }
     }
