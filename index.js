@@ -5,10 +5,12 @@ const { parse } = require('csv-parse/sync');
 const express = require('express');
 const app = express();
 
+const pendingActRecords = new Map();
+
 const {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } = require('discord.js');
 
 // --- ウェブスクレイピング関連のインポート ---
@@ -635,25 +637,33 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 
     // ポイントに基づいてフィールド名を決定
     const fieldName = determineFieldByScore(teamPoints[0].points);
-if (fieldName === 'FIELD_NEEDS_SELECTION') {
+    if (fieldName === 'FIELD_NEEDS_SELECTION') {
+        // 全ての引数をひとまとめにしてMapに保存
+        pendingActRecords.set(userId, {
+            userId,
+            myTeam,
+            mPoint,
+            tPoint,
+            iPoint,
+            myKills,
+            myAssists,
+            attachmentContent,
+            strategistFirst,
+            strategistLast
+        });
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('field_select_onsal')
-            .setLabel('オンサル・ハカイル')
-            .setStyle(ButtonStyle.Primary),
+        // ボタンを作成
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('field_select_onsal').setLabel('オンサル・ハカイル').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('field_select_warco').setLabel('ウォーコー・チーテ').setStyle(ButtonStyle.Danger)
+        );
 
-        new ButtonBuilder()
-            .setCustomId('field_select_warco')
-            .setLabel('ウォーコー・チーテ')
-            .setStyle(ButtonStyle.Danger)
-    );
-
-    return {
-        content: '⚠️ **1位の得点が1400点でした。**\n該当するフィールドを選択してください。',
-        components: [row]
-    };
-}
+        // 保存せずにボタンを返して終了
+        return {
+            content: '⚠️ **1位が1400点でした。** フィールドを選択してください。',
+            components: [row]
+        };
+    }
 
 
     console.log(`[デバッグ] 優勝ポイント: ${teamPoints[0].points}, 判定フィールド: ${fieldName}`);
@@ -846,6 +856,124 @@ if (fieldName === 'FIELD_NEEDS_SELECTION') {
 
     return { embeds: [embed] };
 }
+
+// ================================
+// DB保存専用：continueActRecord
+// ================================
+async function continueActRecord({
+    userId,
+    myTeam,
+    mPoint,
+    tPoint,
+    iPoint,
+    myKills,
+    myAssists,
+    attachmentContent,
+    strategistFirst,
+    strategistLast,
+    fieldName
+}) {
+
+    const myCharacterName = await getCharacterNameByUserId(userId);
+
+    // 軍師名作成
+    let strategistName = null;
+    if (strategistFirst && strategistLast) {
+        strategistName = `${strategistFirst} ${strategistLast}`;
+    }
+
+    // --- ポイント順位計算 ---
+    const teamPoints = [
+        { team: 'Maelstrom', points: mPoint, name: '黒渦団' },
+        { team: 'Twin Adders', points: tPoint, name: '双蛇党' },
+        { team: 'Immortal Flames', points: iPoint, name: '不滅隊' },
+    ].sort((a, b) => b.points - a.points);
+
+    const pointsMap = {};
+    let rankCounter = 1;
+    let prevPoints = -1;
+    teamPoints.forEach((p, index) => {
+        if (p.points !== prevPoints) rankCounter = index + 1;
+        pointsMap[p.team] = { rank: rankCounter, points: p.points, name: p.name };
+        prevPoints = p.points;
+    });
+
+    // --- 試合概要保存 ---
+    const rawRecords = parse(attachmentContent, { columns: true, skip_empty_lines: true, delimiter: ',' });
+    const durationValues = rawRecords.map(r => parseInt(r.Duration)).filter(d => !isNaN(d) && d > 0);
+    const estimatedDuration = durationValues.length > 0 ? Math.max(...durationValues) : null;
+
+    const summaryData = {
+        field: fieldName,
+        myTeam: TEAM_CODES[myTeam] || myTeam,
+        points: { Maelstrom: mPoint, TwinAdders: tPoint, ImmortalFlames: iPoint },
+        ranking: teamPoints.map(p => ({ team: p.team, name: p.name, rank: pointsMap[p.team].rank, points: p.points })),
+        estimatedDuration,
+        recordedBy: userId,
+    };
+
+    const matchId = await storeMatchSummary(summaryData);
+
+    // --- ACTデータ処理 ---
+    const parsedData = parseActData(attachmentContent);
+    let processedData = {};
+
+    for (const [name, record] of Object.entries(parsedData)) {
+        let keyName = name;
+        const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+        if (myCharacterName && nameNormalized === 'YOU' && record.ally === 'T') {
+            keyName = myCharacterName;
+            record.name = myCharacterName;
+        }
+
+        processedData[keyName] = record;
+    }
+
+    // --- 個人成績保存 ---
+    let successCount = 0;
+    let myRecord = null;
+    let strategistRecord = null;
+
+    for (const [name, record] of Object.entries(processedData)) {
+        let finalRecord = { ...record, matchId, userId, isStrategist: false };
+
+        const isMyCharacter = myCharacterName && name === myCharacterName;
+        const isStrategist = strategistName && name === strategistName;
+
+        if (isMyCharacter) {
+            finalRecord.kills = myKills;
+            finalRecord.assists = myAssists;
+            finalRecord.team = TEAM_CODES[myTeam];
+            finalRecord.rank = pointsMap[myTeam].rank;
+            myRecord = finalRecord;
+        } else if (finalRecord.ally === 'T') {
+            finalRecord.team = TEAM_CODES[myTeam];
+            finalRecord.rank = pointsMap[myTeam].rank;
+        } else {
+            finalRecord.team = 'None';
+            finalRecord.rank = 'None';
+        }
+
+        if (isStrategist) {
+            finalRecord.isStrategist = true;
+            strategistRecord = finalRecord;
+        }
+
+        await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
+        successCount++;
+    }
+
+    // --- 結果Embed ---
+    const embed = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle(`✅ ACTフロントライン記録完了 (${fieldName})`)
+        .setDescription(`**試合ID:** \`${matchId}\`\n戦闘記録を **${successCount}名** 登録しました。`)
+        .setTimestamp();
+
+    return { embeds: [embed] };
+}
+
 
 /**
  * 指定された名前のロールをギルド内で検索し、存在しない場合は作成します。
@@ -2689,6 +2817,47 @@ client.on('interactionCreate', async (interaction) => {
         }
         return;
     }
+    // --- フィールド選択ボタンの処理 ---
+    if (interaction.isButton()) {
+        const userId = interaction.user.id;
+        const customId = interaction.customId;
+        const pending = pendingActRecords.get(userId);
+
+        // 1. 本人確認
+        if (!pending || userId !== pending.userId) {
+            return interaction.reply({
+                content: '❌ この選択は、記録を作成した本人のみが行えます。',
+                flags: 64 // ephemeral
+            });
+        }
+
+        // 2. どちらのボタンが押されたか判定
+        if (customId === 'field_select_onsal' || customId === 'field_select_warco') {
+            const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
+
+            // 表示を更新してボタンを消す
+            await interaction.update({
+                content: `✅ フィールド **${fieldName}** が選択されました。\n記録を保存しています…`,
+                components: []
+            });
+
+            // ★ここが修正ポイント！
+            // 受け取り側が { userId, fieldName, ... } という形なので、渡す側も { } で包みます
+            const resultMessage = await continueActRecord({
+                ...pending,       // actRecordCommandで保存した全データ(myTeam, mPointなど)
+                userId: userId,   // 実行ユーザーID
+                fieldName: fieldName // ユーザーが今選んだフィールド名
+            });
+
+            // 使い終わったデータを消す
+            pendingActRecords.delete(userId);
+
+            // 最後にリザルト(Embed)を表示
+            await interaction.followUp(resultMessage);
+            return;
+        }
+    }
+
 });
 
 const port = process.env.PORT || 3000;
