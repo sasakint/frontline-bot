@@ -2760,10 +2760,10 @@ client.on('interactionCreate', async (interaction) => {
         const strategistLast = interaction.options.getString('strategist_last');
 
         try {
-            // 1. 返信を遅延させて3秒ルールを回避
+            // 1. 返信を遅延させて3秒ルールを回避 (deferReply)
             await interaction.deferReply();
 
-            // 2. 添付ファイルを取得
+            // 2. 直近のメッセージから添付ファイル(CSV/TXT)を探す
             const messages = await interaction.channel.messages.fetch({ limit: 10 });
             const lastMessage = messages.find(
                 m => m.author.id === interaction.user.id && m.attachments.size > 0
@@ -2779,11 +2779,11 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (!attachmentContent) {
-                await interaction.editReply({ content: "エラー: CSVファイルが見つかりませんでした。コマンド実行前に、CSV/TXTファイルをアップロードしてください。" });
+                await interaction.editReply({ content: "❌ エラー: ファイルが見つかりませんでした。コマンド実行前にCSVファイルをアップロードしてください。" });
                 return;
             }
 
-            // 3. ACTデータ処理ロジックを実行 (1400点ならボタンを返す)
+            // 3. コマンドロジックを実行 (1400点なら内部で pending に保存しボタンを返す)
             const responseMessage = await actRecordCommand(
                 interaction.user.id,
                 myTeam,
@@ -2797,74 +2797,76 @@ client.on('interactionCreate', async (interaction) => {
                 strategistLast
             );
 
+            // 4. 結果を返信 (ボタンまたはリザルトEmbed)
             await interaction.editReply(responseMessage);
 
         } catch (error) {
-            console.error('ACT記録処理中に発生したエラー:', error);
+            console.error('act_record 処理エラー:', error);
             try {
                 await interaction.editReply({
-                    content: `❌ ACT記録中に予期せぬエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 150)}\n\`\`\`\nログを確認してください。`
+                    content: `❌ 処理中にエラーが発生しました。\n\`\`\`\n${error.message.substring(0, 150)}\n\`\`\``
                 });
-            } catch (e) {
-                console.error("editReplyの再試行中にエラーが発生しました:", e);
-            }
+            } catch (e) { /* ignore */ }
         }
         return;
     }
-
     // --- フィールド選択ボタンの処理 ---
     if (interaction.isButton()) {
         const userId = interaction.user.id;
         const customId = interaction.customId;
-        
-        // データの取得と本人確認
+
+        // 判定対象のIDリスト
+        const isFieldButton = customId === 'field_select_onsal' || customId === 'field_select_warco';
+        if (!isFieldButton) return;
+
+        // 1. 一時保存データの取得
         const pending = pendingActRecords.get(userId);
 
+        // 2. データがない場合や本人でない場合の処理 (速やかに update/reply)
         if (!pending) {
-            return await interaction.update({ 
-                content: '❌ エラー: 対応するACT記録データが見つかりませんでした。もう一度最初からやり直してください。', 
-                components: [] 
-            }).catch(console.error);
+            return await interaction.update({
+                content: '❌ エラー: 記録データが期限切れ、または見つかりません。',
+                components: []
+            }).catch(() => { });
         }
 
         if (userId !== pending.userId) {
             return await interaction.reply({
-                content: '❌ この選択は、記録を作成した本人のみが行えます。',
+                content: '❌ この操作は記録を開始した本人のみが行えます。',
                 flags: 64 // ephemeral
-            }).catch(console.error);
+            }).catch(() => { });
         }
 
-        // フィールド選択ボタンの判定
-        if (customId === 'field_select_onsal' || customId === 'field_select_warco') {
-            const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
+        // 3. フィールド確定処理
+        const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
 
-            try {
-                // ★最重要: 重い保存処理の前に、まず update でDiscordの「3秒ルール」をクリアする
-                // これをやらないと「インタラクションに失敗しました」になります
-                await interaction.update({
-                    content: `✅ フィールド **${fieldName}** が選択されました。\nFirestoreへ保存しています…`,
-                    components: []
-                });
+        try {
+            // ★最優先: update() を呼んでDiscordに「受け取った」と伝える。
+            // これにより、この後の重い continueActRecord 処理中に3秒期限が切れるのを防ぎます。
+            await interaction.update({
+                content: `✅ **${fieldName}** を選択しました。保存処理を実行中です...`,
+                components: []
+            });
 
-                // 保存処理の実行
-                // 最新の index.js で採用されているオブジェクト形式 {...pending, userId, fieldName} で呼び出します
-                const resultMessage = await continueActRecord({
-                    ...pending,
-                    userId: userId,
-                    fieldName: fieldName
-                });
+            // 4. DB保存処理 (ここが重い可能性がある)
+            const resultMessage = await continueActRecord({
+                ...pending,
+                userId: userId,
+                fieldName: fieldName
+            });
 
-                // 一時データを削除
-                pendingActRecords.delete(userId);
+            // 5. 保存完了後に一時データを削除
+            pendingActRecords.delete(userId);
 
-                // 保存が終わったら followUp で完了Embedを表示
-                await interaction.followUp(resultMessage);
+            // 6. followUp で最終的な結果Embedを投稿
+            await interaction.followUp(resultMessage);
 
-            } catch (error) {
-                console.error('ボタン処理中のエラー:', error);
-                // すでに update() 済みなので、エラーも followUp() で送る
-                await interaction.followUp({ content: '❌ 保存中にエラーが発生しました。ログを確認してください。' }).catch(console.error);
-            }
+        } catch (error) {
+            console.error('ボタン処理中の致命的エラー:', error);
+            // update済みのため、エラー通知は followUp で行う
+            await interaction.followUp({
+                content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\``
+            }).catch(() => { });
         }
     }
     // --- フィールド選択ボタンの処理 ---
