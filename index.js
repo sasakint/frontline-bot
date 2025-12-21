@@ -43,6 +43,7 @@ const {
     query,
     orderBy,
     where, // ★where句を使用するためにインポート
+    writeBatch
 } = firebaseFirestoreModule;
 
 // Lodestone IDとユーザーを紐づけるコレクション名
@@ -1157,13 +1158,13 @@ const commands = [
             { name: 'healing_done', description: '与ヒール (Healing Done)', type: ApplicationCommandOptionType.Integer, required: true, minValue: 0 },
         ],
     },
-    {
-        name: 'deleterecord',
-        description: '指定したIDのフロントラインリザルトを削除します。',
-        options: [
-            { name: 'record_id', description: '削除したいリザルトのID', type: ApplicationCommandOptionType.String, required: true },
-        ],
-    },
+    // {
+    //     name: 'deleterecord',
+    //     description: '指定したIDのフロントラインリザルトを削除します。',
+    //     options: [
+    //         { name: 'record_id', description: '削除したいリザルトのID', type: ApplicationCommandOptionType.String, required: true },
+    //     ],
+    // },
     // --- /today コマンドの定義 ---
     {
         name: 'today',
