@@ -1449,6 +1449,19 @@ const commands = [
         description: 'ACTのPvPサマリーCSVと試合順位を記録します。',
         options: [
             {
+                name: 'field',
+                description: '戦場の種類を選択してください（リストから選択）',
+                type: 3, // ApplicationCommandOptionType.String
+                required: true,
+                choices: [
+                    { name: '外縁遺跡群 (制圧戦)', value: '外縁遺跡群　制圧戦' },
+                    { name: 'フィールド・オブ・グローリー (砕氷戦)', value: 'フィールド・オブ・グローリー　砕氷戦' },
+                    { name: 'シールロック (争奪戦)', value: 'シールロック　争奪戦' },
+                    { name: 'オンサル・ハカイル (終節戦)', value: 'オンサル・ハカイル　終節戦' },
+                    { name: 'ウォーコー・チーテ (演習戦)', value: 'ウォーコー・チーテ　演習戦' }
+                ]
+            },
+            {
                 name: 'my_team',
                 description: '自分の所属アライアンス（黒渦団、双蛇党、不滅隊）',
                 type: ApplicationCommandOptionType.String,
@@ -2750,7 +2763,9 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     // --- 【★ /act_record コマンドの処理 ★】 ---
-    if (interaction.isChatInputCommand() && interaction.commandName === 'act_record') {
+    if (interaction.commandName === 'act_record') {
+        // --- ① コマンド引数の取得 ---
+        const fieldName = interaction.options.getString('field'); // コマンドの選択肢から直接取得
         const myTeam = interaction.options.getString('my_team');
         const mPoint = interaction.options.getInteger('maelstrom_points');
         const tPoint = interaction.options.getInteger('twin_adders_points');
@@ -2760,10 +2775,13 @@ client.on('interactionCreate', async (interaction) => {
         const strategistFirst = interaction.options.getString('strategist_first');
         const strategistLast = interaction.options.getString('strategist_last');
 
-        try {
-            await interaction.deferReply();
-            console.log('  -> Command deferred successfully.');
+        console.log(`[Command] act_record started by ${interaction.user.tag} for ${fieldName}`);
 
+        try {
+            // --- ② 3秒ルール回避のための遅延応答 ---
+            await interaction.deferReply();
+
+            // --- ③ 添付ファイルの取得 ---
             const messages = await interaction.channel.messages.fetch({ limit: 10 });
             const lastMessage = messages.find(
                 m => m.author.id === interaction.user.id && m.attachments.size > 0
@@ -2779,9 +2797,14 @@ client.on('interactionCreate', async (interaction) => {
             }
 
             if (!attachmentContent) {
-                return await interaction.editReply({ content: "❌ エラー: CSVファイルが見つかりませんでした。" });
+                return await interaction.editReply({
+                    content: "❌ エラー: CSVファイルが見つかりません。コマンド実行の直前に、CSVファイルをこのチャンネルにアップロードしてください。"
+                });
             }
 
+            // --- ④ 保存処理の実行 ---
+            // 本来のメイン関数である actRecordCommand を呼び出します。
+            // 選択された fieldName を引数に追加して、直接保存ロジックを走らせます。
             const responseMessage = await actRecordCommand(
                 interaction.user.id,
                 myTeam,
@@ -2792,95 +2815,98 @@ client.on('interactionCreate', async (interaction) => {
                 myAssists,
                 attachmentContent,
                 strategistFirst,
-                strategistLast
+                strategistLast,
+                fieldName // フィールド名を引数として渡す
             );
 
+            // --- ⑤ 結果の表示 ---
             await interaction.editReply(responseMessage);
-            console.log('  -> Initial response sent (may contain buttons).');
+            console.log('  -> Record processed and saved via actRecordCommand.');
 
         } catch (error) {
-            console.error('  !! Command Error:', error);
+            console.error('  !! Error during act_record:', error);
             try {
-                await interaction.editReply({ content: `❌ 処理中にエラーが発生しました: ${error.message}` });
+                await interaction.editReply({
+                    content: `❌ 記録の保存中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\``
+                });
             } catch (e) { /* ignore */ }
         }
-        return;
     }
 
     // --- ボタン（フィールド選択）の処理 ---
-    if (interaction.isButton()) {
-        const userId = interaction.user.id;
-        const customId = interaction.customId;
+    // if (interaction.isButton()) {
+    //     const userId = interaction.user.id;
+    //     const customId = interaction.customId;
 
-        console.log(`[Button] ID: ${customId}, User: ${userId}`);
+    //     console.log(`[Button] ID: ${customId}, User: ${userId}`);
 
-        // 判定対象のボタンかチェック
-        if (!['field_select_onsal', 'field_select_warco'].includes(customId)) {
-            console.log('  -> Not a target button ID, skipping.');
-            return;
-        }
+    //     // 判定対象のボタンかチェック
+    //     if (!['field_select_onsal', 'field_select_warco'].includes(customId)) {
+    //         console.log('  -> Not a target button ID, skipping.');
+    //         return;
+    //     }
 
-        try {
-            // 1. 一時保存データの取得
-            const pending = pendingActRecords.get(userId);
+    //     try {
+    //         // 1. 一時保存データの取得
+    //         const pending = pendingActRecords.get(userId);
 
-            // 2. データの存在確認（ここで落ちないようにガードを徹底）
-            if (!pending) {
-                console.warn(`  !! No pending data found for user ${userId}. (Data might have expired or Map is cleared)`);
-                return await interaction.update({ 
-                    content: '❌ エラー: 記録データが見つかりません。もう一度 `/act_record` からやり直してください。', 
-                    components: [] 
-                }).catch(err => console.error('  !! Failed to update error message:', err));
-            }
+    //         // 2. データの存在確認（ここで落ちないようにガードを徹底）
+    //         if (!pending) {
+    //             console.warn(`  !! No pending data found for user ${userId}. (Data might have expired or Map is cleared)`);
+    //             return await interaction.update({ 
+    //                 content: '❌ エラー: 記録データが見つかりません。もう一度 `/act_record` からやり直してください。', 
+    //                 components: [] 
+    //             }).catch(err => console.error('  !! Failed to update error message:', err));
+    //         }
 
-            // 3. 本人確認 (オプショナルチェイニングを使用して undefined エラーを防止)
-            if (userId !== (pending?.userId || '')) {
-                console.warn(`  !! User mismatch: Pending=${pending?.userId}, Interaction=${userId}`);
-                return await interaction.reply({
-                    content: '❌ 本人のみが操作できます。',
-                    flags: 64
-                }).catch(err => console.error('  !! Failed to send reply:', err));
-            }
+    //         // 3. 本人確認 (オプショナルチェイニングを使用して undefined エラーを防止)
+    //         if (userId !== (pending?.userId || '')) {
+    //             console.warn(`  !! User mismatch: Pending=${pending?.userId}, Interaction=${userId}`);
+    //             return await interaction.reply({
+    //                 content: '❌ 本人のみが操作できます。',
+    //                 flags: 64
+    //             }).catch(err => console.error('  !! Failed to send reply:', err));
+    //         }
 
-            // 4. フィールド名の決定
-            const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
+    //         // 4. フィールド名の決定
+    //         const fieldName = (customId === 'field_select_onsal') ? 'オンサル・ハカイル 終節戦' : 'ウォーコー・チーテ';
 
-            // 5. 3秒ルール回避のための即時更新 (保存処理の前に必ず呼ぶ)
-            console.log(`  -> Field selected: ${fieldName}. Updating UI...`);
-            await interaction.update({
-                content: `✅ **${fieldName}** を選択しました。保存処理中です...`,
-                components: []
-            });
+    //         // 5. 3秒ルール回避のための即時更新 (保存処理の前に必ず呼ぶ)
+    //         console.log(`  -> Field selected: ${fieldName}. Updating UI...`);
+    //         await interaction.update({
+    //             content: `✅ **${fieldName}** を選択しました。保存処理中です...`,
+    //             components: []
+    //         });
 
-            // 6. 保存処理の実行
-            console.log('  -> Starting continueActRecord...');
-            // 引数の構造が continueActRecord の定義と合っているか再確認
-            const resultMessage = await continueActRecord({
-                ...pending,
-                userId: userId,
-                fieldName: fieldName
-            });
+    //         // 6. 保存処理の実行
+    //         console.log('  -> Starting continueActRecord...');
+    //         // 引数の構造が continueActRecord の定義と合っているか再確認
+    //         const resultMessage = await continueActRecord({
+    //             ...pending,
+    //             userId: userId,
+    //             fieldName: fieldName
+    //         });
 
-            // 7. クリーンアップと完了通知
-            pendingActRecords.delete(userId);
-            await interaction.followUp(resultMessage);
-            console.log('  -> Save complete and followUp sent.');
+    //         // 7. クリーンアップと完了通知
+    //         pendingActRecords.delete(userId);
+    //         await interaction.followUp(resultMessage);
+    //         console.log('  -> Save complete and followUp sent.');
 
-        } catch (error) {
-            console.error('  !! CRITICAL Button Process Error:', error);
-            // エラー時もプロセスを落とさないようキャッチして通知
-            try {
-                const errorMessage = { content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\`` };
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp(errorMessage);
-                } else {
-                    await interaction.update({ ...errorMessage, components: [] });
-                }
-            } catch (e) {
-                console.error('  !! Double Failure: Failed to send error message to user:', e);
-            }
-        }
-    }
+    //     } catch (error) {
+    //         console.error('  !! CRITICAL Button Process Error:', error);
+    //         // エラー時もプロセスを落とさないようキャッチして通知
+    //         try {
+    //             const errorMessage = { content: `❌ 保存処理中にエラーが発生しました。\n\`\`\`\n${error.message}\n\`\`\`` };
+    //             if (interaction.replied || interaction.deferred) {
+    //                 await interaction.followUp(errorMessage);
+    //             } else {
+    //                 await interaction.update({ ...errorMessage, components: [] });
+    //             }
+    //         } catch (e) {
+    //             console.error('  !! Double Failure: Failed to send error message to user:', e);
+    //         }
+    //     }
+    // }
     // --- フィールド選択ボタンの処理 ---
     if (interaction.isButton()) {
         const userId = interaction.user.id;
