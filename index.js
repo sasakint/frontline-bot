@@ -636,37 +636,37 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
     });
 
     // ポイントに基づいてフィールド名を決定
-    const fieldName = determineFieldByScore(teamPoints[0].points);
-    if (fieldName === 'FIELD_NEEDS_SELECTION') {
-        // 全ての引数をひとまとめにしてMapに保存
-        pendingActRecords.set(userId, {
-            userId,
-            myTeam,
-            mPoint,
-            tPoint,
-            iPoint,
-            myKills,
-            myAssists,
-            attachmentContent,
-            strategistFirst,
-            strategistLast
-        });
+    // const fieldName = determineFieldByScore(teamPoints[0].points);
+    // if (fieldName === 'FIELD_NEEDS_SELECTION') {
+    //     // 全ての引数をひとまとめにしてMapに保存
+    //     pendingActRecords.set(userId, {
+    //         userId,
+    //         myTeam,
+    //         mPoint,
+    //         tPoint,
+    //         iPoint,
+    //         myKills,
+    //         myAssists,
+    //         attachmentContent,
+    //         strategistFirst,
+    //         strategistLast
+    //     });
 
-        // ボタンを作成
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('field_select_onsal').setLabel('オンサル・ハカイル').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('field_select_warco').setLabel('ウォーコー・チーテ').setStyle(ButtonStyle.Danger)
-        );
+    //     // ボタンを作成
+    //     const row = new ActionRowBuilder().addComponents(
+    //         new ButtonBuilder().setCustomId('field_select_onsal').setLabel('オンサル・ハカイル').setStyle(ButtonStyle.Primary),
+    //         new ButtonBuilder().setCustomId('field_select_warco').setLabel('ウォーコー・チーテ').setStyle(ButtonStyle.Danger)
+    //     );
 
-        // 保存せずにボタンを返して終了
-        return {
-            content: '⚠️ **1位が1400点でした。** フィールドを選択してください。',
-            components: [row]
-        };
-    }
+    //     // 保存せずにボタンを返して終了
+    //     return {
+    //         content: '⚠️ **1位が1400点でした。** フィールドを選択してください。',
+    //         components: [row]
+    //     };
+    // }
 
 
-    console.log(`[デバッグ] 優勝ポイント: ${teamPoints[0].points}, 判定フィールド: ${fieldName}`);
+    // console.log(`[デバッグ] 優勝ポイント: ${teamPoints[0].points}, 判定フィールド: ${fieldName}`);
 
 
     // --- 3. 試合概要の保存 ---
@@ -860,119 +860,119 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
 // ================================
 // DB保存専用：continueActRecord
 // ================================
-async function continueActRecord({
-    userId,
-    myTeam,
-    mPoint,
-    tPoint,
-    iPoint,
-    myKills,
-    myAssists,
-    attachmentContent,
-    strategistFirst,
-    strategistLast,
-    fieldName
-}) {
+// async function continueActRecord({
+//     userId,
+//     myTeam,
+//     mPoint,
+//     tPoint,
+//     iPoint,
+//     myKills,
+//     myAssists,
+//     attachmentContent,
+//     strategistFirst,
+//     strategistLast,
+//     fieldName
+// }) {
 
-    const myCharacterName = await getCharacterNameByUserId(userId);
+//     const myCharacterName = await getCharacterNameByUserId(userId);
 
-    // 軍師名作成
-    let strategistName = null;
-    if (strategistFirst && strategistLast) {
-        strategistName = `${strategistFirst} ${strategistLast}`;
-    }
+//     // 軍師名作成
+//     let strategistName = null;
+//     if (strategistFirst && strategistLast) {
+//         strategistName = `${strategistFirst} ${strategistLast}`;
+//     }
 
-    // --- ポイント順位計算 ---
-    const teamPoints = [
-        { team: 'Maelstrom', points: mPoint, name: '黒渦団' },
-        { team: 'Twin Adders', points: tPoint, name: '双蛇党' },
-        { team: 'Immortal Flames', points: iPoint, name: '不滅隊' },
-    ].sort((a, b) => b.points - a.points);
+//     // --- ポイント順位計算 ---
+//     const teamPoints = [
+//         { team: 'Maelstrom', points: mPoint, name: '黒渦団' },
+//         { team: 'Twin Adders', points: tPoint, name: '双蛇党' },
+//         { team: 'Immortal Flames', points: iPoint, name: '不滅隊' },
+//     ].sort((a, b) => b.points - a.points);
 
-    const pointsMap = {};
-    let rankCounter = 1;
-    let prevPoints = -1;
-    teamPoints.forEach((p, index) => {
-        if (p.points !== prevPoints) rankCounter = index + 1;
-        pointsMap[p.team] = { rank: rankCounter, points: p.points, name: p.name };
-        prevPoints = p.points;
-    });
+//     const pointsMap = {};
+//     let rankCounter = 1;
+//     let prevPoints = -1;
+//     teamPoints.forEach((p, index) => {
+//         if (p.points !== prevPoints) rankCounter = index + 1;
+//         pointsMap[p.team] = { rank: rankCounter, points: p.points, name: p.name };
+//         prevPoints = p.points;
+//     });
 
-    // --- 試合概要保存 ---
-    const rawRecords = parse(attachmentContent, { columns: true, skip_empty_lines: true, delimiter: ',' });
-    const durationValues = rawRecords.map(r => parseInt(r.Duration)).filter(d => !isNaN(d) && d > 0);
-    const estimatedDuration = durationValues.length > 0 ? Math.max(...durationValues) : null;
+//     // --- 試合概要保存 ---
+//     const rawRecords = parse(attachmentContent, { columns: true, skip_empty_lines: true, delimiter: ',' });
+//     const durationValues = rawRecords.map(r => parseInt(r.Duration)).filter(d => !isNaN(d) && d > 0);
+//     const estimatedDuration = durationValues.length > 0 ? Math.max(...durationValues) : null;
 
-    const summaryData = {
-        field: fieldName,
-        myTeam: TEAM_CODES[myTeam] || myTeam,
-        points: { Maelstrom: mPoint, TwinAdders: tPoint, ImmortalFlames: iPoint },
-        ranking: teamPoints.map(p => ({ team: p.team, name: p.name, rank: pointsMap[p.team].rank, points: p.points })),
-        estimatedDuration,
-        recordedBy: userId,
-    };
+//     const summaryData = {
+//         field: fieldName,
+//         myTeam: TEAM_CODES[myTeam] || myTeam,
+//         points: { Maelstrom: mPoint, TwinAdders: tPoint, ImmortalFlames: iPoint },
+//         ranking: teamPoints.map(p => ({ team: p.team, name: p.name, rank: pointsMap[p.team].rank, points: p.points })),
+//         estimatedDuration,
+//         recordedBy: userId,
+//     };
 
-    const matchId = await storeMatchSummary(summaryData);
+//     const matchId = await storeMatchSummary(summaryData);
 
-    // --- ACTデータ処理 ---
-    const parsedData = parseActData(attachmentContent);
-    let processedData = {};
+//     // --- ACTデータ処理 ---
+//     const parsedData = parseActData(attachmentContent);
+//     let processedData = {};
 
-    for (const [name, record] of Object.entries(parsedData)) {
-        let keyName = name;
-        const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+//     for (const [name, record] of Object.entries(parsedData)) {
+//         let keyName = name;
+//         const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
-        if (myCharacterName && nameNormalized === 'YOU' && record.ally === 'T') {
-            keyName = myCharacterName;
-            record.name = myCharacterName;
-        }
+//         if (myCharacterName && nameNormalized === 'YOU' && record.ally === 'T') {
+//             keyName = myCharacterName;
+//             record.name = myCharacterName;
+//         }
 
-        processedData[keyName] = record;
-    }
+//         processedData[keyName] = record;
+//     }
 
-    // --- 個人成績保存 ---
-    let successCount = 0;
-    let myRecord = null;
-    let strategistRecord = null;
+//     // --- 個人成績保存 ---
+//     let successCount = 0;
+//     let myRecord = null;
+//     let strategistRecord = null;
 
-    for (const [name, record] of Object.entries(processedData)) {
-        let finalRecord = { ...record, matchId, userId, isStrategist: false };
+//     for (const [name, record] of Object.entries(processedData)) {
+//         let finalRecord = { ...record, matchId, userId, isStrategist: false };
 
-        const isMyCharacter = myCharacterName && name === myCharacterName;
-        const isStrategist = strategistName && name === strategistName;
+//         const isMyCharacter = myCharacterName && name === myCharacterName;
+//         const isStrategist = strategistName && name === strategistName;
 
-        if (isMyCharacter) {
-            finalRecord.kills = myKills;
-            finalRecord.assists = myAssists;
-            finalRecord.team = TEAM_CODES[myTeam];
-            finalRecord.rank = pointsMap[myTeam].rank;
-            myRecord = finalRecord;
-        } else if (finalRecord.ally === 'T') {
-            finalRecord.team = TEAM_CODES[myTeam];
-            finalRecord.rank = pointsMap[myTeam].rank;
-        } else {
-            finalRecord.team = 'None';
-            finalRecord.rank = 'None';
-        }
+//         if (isMyCharacter) {
+//             finalRecord.kills = myKills;
+//             finalRecord.assists = myAssists;
+//             finalRecord.team = TEAM_CODES[myTeam];
+//             finalRecord.rank = pointsMap[myTeam].rank;
+//             myRecord = finalRecord;
+//         } else if (finalRecord.ally === 'T') {
+//             finalRecord.team = TEAM_CODES[myTeam];
+//             finalRecord.rank = pointsMap[myTeam].rank;
+//         } else {
+//             finalRecord.team = 'None';
+//             finalRecord.rank = 'None';
+//         }
 
-        if (isStrategist) {
-            finalRecord.isStrategist = true;
-            strategistRecord = finalRecord;
-        }
+//         if (isStrategist) {
+//             finalRecord.isStrategist = true;
+//             strategistRecord = finalRecord;
+//         }
 
-        await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
-        successCount++;
-    }
+//         await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
+//         successCount++;
+//     }
 
-    // --- 結果Embed ---
-    const embed = new EmbedBuilder()
-        .setColor(0x0099ff)
-        .setTitle(`✅ ACTフロントライン記録完了 (${fieldName})`)
-        .setDescription(`**試合ID:** \`${matchId}\`\n戦闘記録を **${successCount}名** 登録しました。`)
-        .setTimestamp();
+//     // --- 結果Embed ---
+//     const embed = new EmbedBuilder()
+//         .setColor(0x0099ff)
+//         .setTitle(`✅ ACTフロントライン記録完了 (${fieldName})`)
+//         .setDescription(`**試合ID:** \`${matchId}\`\n戦闘記録を **${successCount}名** 登録しました。`)
+//         .setTimestamp();
 
-    return { embeds: [embed] };
-}
+//     return { embeds: [embed] };
+// }
 
 
 /**
