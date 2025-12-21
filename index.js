@@ -597,7 +597,7 @@ function parseActData(actData) { // ★ 引数から allianceRank を削除 ★
 /**
  * ACTデータ処理、Firestoreへの保存、結果Embedの作成を行うメインロジック
  */
-async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills, myAssists, attachmentContent, strategistFirst, strategistLast) {
+async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills, myAssists, attachmentContent, strategistFirst, strategistLast, fieldName) {
 
     // 1. 自分のキャラクター名を取得
     const myCharacterName = await getCharacterNameByUserId(userId);
@@ -605,16 +605,14 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
     // ★★★ 軍師名を作成 ★★★
     let strategistName = null;
     if (strategistFirst && strategistLast) {
-        // 例: 'Taro Yamada'
         strategistName = `${strategistFirst} ${strategistLast}`;
         console.log(`【デバッグ】軍師名が指定されました: ${strategistName}`);
     } else if (strategistFirst || strategistLast) {
-        // 片方だけ入力された場合は警告
         console.warn(`【警告】軍師の姓または名が片方だけ入力されました。軍師情報は無視されます。`);
     }
 
     if (!myCharacterName) {
-        console.warn(`【警告】ユーザーID ${userId} のキャラ名が取得できませんでした。/link済みか確認してください。`);
+        console.warn(`【警告】ユーザーID ${userId} のキャラ名が取得できませんでした。`);
     } else {
         console.log(`【デバッグ】YOU変換対象のキャラ名: ${myCharacterName}`);
     }
@@ -635,53 +633,24 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
         prevPoints = p.points;
     });
 
-    // ポイントに基づいてフィールド名を決定
-    // const fieldName = determineFieldByScore(teamPoints[0].points);
-    // if (fieldName === 'FIELD_NEEDS_SELECTION') {
-    //     // 全ての引数をひとまとめにしてMapに保存
-    //     pendingActRecords.set(userId, {
-    //         userId,
-    //         myTeam,
-    //         mPoint,
-    //         tPoint,
-    //         iPoint,
-    //         myKills,
-    //         myAssists,
-    //         attachmentContent,
-    //         strategistFirst,
-    //         strategistLast
-    //     });
-
-    //     // ボタンを作成
-    //     const row = new ActionRowBuilder().addComponents(
-    //         new ButtonBuilder().setCustomId('field_select_onsal').setLabel('オンサル・ハカイル').setStyle(ButtonStyle.Primary),
-    //         new ButtonBuilder().setCustomId('field_select_warco').setLabel('ウォーコー・チーテ').setStyle(ButtonStyle.Danger)
-    //     );
-
-    //     // 保存せずにボタンを返して終了
-    //     return {
-    //         content: '⚠️ **1位が1400点でした。** フィールドを選択してください。',
-    //         components: [row]
-    //     };
-    // }
-
-
-    // console.log(`[デバッグ] 優勝ポイント: ${teamPoints[0].points}, 判定フィールド: ${fieldName}`);
-
-
     // --- 3. 試合概要の保存 ---
     const rawRecords = parse(attachmentContent, { columns: true, skip_empty_lines: true, delimiter: ',' });
     const durationValues = rawRecords.map(r => parseInt(r.Duration)).filter(d => !isNaN(d) && d > 0);
     const estimatedDuration = durationValues.length > 0 ? Math.max(...durationValues) : null;
 
+    // もし fieldName が未定義で渡された場合のフォールバック（安全策）
+    const finalFieldName = fieldName || "不明なフィールド";
+
     const summaryData = {
-        field: fieldName,
+        field: finalFieldName,
         myTeam: TEAM_CODES[myTeam] || myTeam,
         points: { Maelstrom: mPoint, TwinAdders: tPoint, ImmortalFlames: iPoint },
         ranking: teamPoints.map(p => ({ team: p.team, name: p.name, rank: pointsMap[p.team].rank, points: p.points })),
         estimatedDuration: estimatedDuration,
         recordedBy: userId,
     };
+    
+    // matchIdを生成して保存
     const matchId = await storeMatchSummary(summaryData);
 
     // --- 4. ACTデータの処理と「YOU」の変換 ---
@@ -693,162 +662,110 @@ async function actRecordCommand(userId, myTeam, mPoint, tPoint, iPoint, myKills,
         const nameNormalized = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
         const isYou = nameNormalized === 'YOU';
 
-        // 変換条件: 'Ally: T'
+        // 変換条件: 'Ally: T' かつ 自分の名前が判明している
         if (myCharacterName && isYou && record.ally === 'T') {
             keyName = myCharacterName;
             record.name = myCharacterName;
-            console.log(`【変換成功】ACTデータの 'YOU' (Ally: T) を '${myCharacterName}' に置き換えました。`);
+            console.log(`【変換成功】'YOU' を '${myCharacterName}' に置き換えました。`);
         }
-
         processedData[keyName] = record;
     }
 
-    // --- 5. データベースへの保存とチーム・ランク付与/軍師フラグ追加 ---
+    // --- 5. データベースへの保存 ---
     let successCount = 0;
-    let failCount = 0;
     let myRecord = null;
-    let strategistRecord = null; // 軍師のレコードを格納する変数
+    let strategistRecord = null;
 
     for (const [name, record] of Object.entries(processedData)) {
-        // ★★★ isStrategist フィールドを初期化 ★★★
         let finalRecord = { ...record, matchId: matchId, userId: userId, isStrategist: false };
 
-        // 自分のキャラかどうか判定 (変換後の名前でチェック)
         const isMyCharacter = myCharacterName && (name === myCharacterName);
-
-        // ★★★ 軍師かどうか判定 ★★★
         const isStrategist = strategistName && (name === strategistName);
 
         if (isMyCharacter) {
-            // 自分 (Ally: T)
             finalRecord.kills = myKills;
             finalRecord.assists = myAssists;
             finalRecord.team = TEAM_CODES[myTeam];
             finalRecord.rank = pointsMap[myTeam].rank;
             myRecord = finalRecord;
-            console.log(`【上書き】自分(${name})の戦績を更新: K${myKills}/A${myAssists}`);
-
         } else if (finalRecord.ally === 'T') {
-            // 他の味方(T)
             finalRecord.team = TEAM_CODES[myTeam];
             finalRecord.rank = pointsMap[myTeam].rank;
-
-        } else if (finalRecord.ally === 'F') {
-            // 敵(F)
-            finalRecord.team = 'None';
-            finalRecord.rank = 'None';
-
         } else {
-            // その他
             finalRecord.team = 'None';
             finalRecord.rank = 'None';
         }
 
-        // ★★★ 軍師フラグを設定し、レコードを記憶 ★★★
         if (isStrategist) {
             finalRecord.isStrategist = true;
             strategistRecord = finalRecord;
-            console.log(`【軍師特定】軍師 ${name} のレコードにフラグを設定しました。`);
+            console.log(`【軍師特定】軍師 ${name} にフラグを設定しました。`);
         }
-
 
         try {
             await addDoc(collection(getFirestore(), RESULT_COLLECTION_NAME), finalRecord);
             successCount++;
         } catch (e) {
             console.error(`保存エラー (${name}):`, e);
-            failCount++;
         }
     }
 
     // --- 6. 結果Embedの作成 ---
     const formatNumber = (num) => (typeof num === 'number' ? num.toLocaleString() : num);
 
-    // damageが0より大きいレコードのみを対象
     const allPlayersArray = Object.values(processedData)
         .filter(p => p.damage > 0 && p.name && p.job)
-        // データベースに保存したレコードからisStrategist情報を反映させる
-        .map(p => ({ ...p, isStrategist: (strategistRecord && p.name === strategistRecord.name) ? true : false }))
-        .sort((a, b) => b.damage - a.damage); // 与ダメ(Damage)でソート
+        .map(p => ({ 
+            ...p, 
+            isStrategist: (strategistRecord && p.name === strategistRecord.name) ? true : false 
+        }))
+        .sort((a, b) => b.damage - a.damage);
 
-    // 自分のレコードをランキングから除外したリスト
     const rankPlayers = allPlayersArray.filter(p => !myCharacterName || p.name !== myCharacterName);
-
-    const topPlayers = rankPlayers.slice(0, Math.min(rankPlayers.length, 8));
+    const topPlayers = rankPlayers.slice(0, 8);
 
     const embed = new EmbedBuilder()
         .setColor(0x0099ff)
-        .setTitle(`✅ ACTフロントライン記録完了 (${fieldName})`)
-        .setDescription(`**試合ID:** \`${matchId}\`\n**自分のチーム:** ${TEAM_CODES[myTeam] || myTeam} (${pointsMap[myTeam].rank}位) \n\n戦闘記録を**${successCount}名**について登録しました。`)
+        .setTitle(`✅ ACTフロントライン記録完了 (${finalFieldName})`)
+        .setDescription(`**試合ID:** \`${matchId}\`\n**自分のチーム:** ${TEAM_CODES[myTeam] || myTeam} (${pointsMap[myTeam].rank}位) \n\n戦闘記録を**${successCount}名**登録しました。`)
         .addFields(
             { name: '🥇 1位', value: `${teamPoints[0].name} (${teamPoints[0].points}pt)`, inline: true },
             { name: '🥈 2位', value: `${teamPoints[1].name} (${teamPoints[1].points}pt)`, inline: true },
             { name: '🥉 3位', value: `${teamPoints[2].name} (${teamPoints[2].points}pt)`, inline: true }
         )
         .setTimestamp()
-        .setFooter({ text: `記録者: ${myCharacterName || userId} | 試合時間: ${estimatedDuration || '不明'}秒 | データベースに格納済み` });
+        .setFooter({ text: `記録者: ${myCharacterName || userId} | 試合時間: ${estimatedDuration || '不明'}秒` });
 
-    // 注釈の変更
-    const footnote = "\n\n⚠️ **注釈:** フィールドは優勝チームのポイントに基づいて自動判定しています。";
-    embed.setDescription(embed.data.description + footnote);
-
-    // ★★★ 軍師情報エリアを追加 ★★★
     if (strategistRecord) {
-        const strategistJobCode = strategistRecord.job.toUpperCase();
-        const strategistEmoji = JOB_EMOJIS[strategistJobCode] || '❓';
+        const emoji = JOB_EMOJIS[strategistRecord.job.toUpperCase()] || '❓';
         embed.addFields({
             name: `────────────────────`,
-            value: `**👑 軍師: ${strategistRecord.name} ${strategistEmoji} [${strategistRecord.job}]**`,
+            value: `**👑 軍師: ${strategistRecord.name} ${emoji} [${strategistRecord.job}]**`,
             inline: false
         });
     }
 
-    // 自分の情報
     if (myRecord) {
-        const myJobCode = myRecord.job.toUpperCase();
-        const myEmoji = JOB_EMOJIS[myJobCode] || '❓';
-        const myDps = formatNumber(Math.round(myRecord.dps) || 0);
-
+        const emoji = JOB_EMOJIS[myRecord.job.toUpperCase()] || '❓';
+        const dps = formatNumber(Math.round(myRecord.dps) || 0);
         embed.addFields({
             name: `────────────────────`,
-            value: `**👑 あなたの戦績 (${myRecord.name} ${myEmoji} [${myRecord.job}])**`,
+            value: `**👑 あなたの戦績 (${myRecord.name} ${emoji} [${myRecord.job}])**`,
             inline: false
-        });
-        embed.addFields({
-            name: `キル/アシスト`,
-            value: `**K:** ${myRecord.kills} / **A:** ${myRecord.assists}`,
+        }, {
+            name: `成績`,
+            value: `**K/A:** ${myRecord.kills}/${myRecord.assists} | **与Dmg:** ${formatNumber(myRecord.damage)} | **DPS:** ${dps}`,
             inline: true
         });
-        embed.addFields({
-            name: `与ダメージ / DPS`,
-            value: `**Dmg:** ${formatNumber(myRecord.damage)} / **DPS:** ${myDps}`,
-            inline: true
-        });
-        embed.addFields({
-            name: `被ダメージ / デス`,
-            value: `**被Dmg:** ${formatNumber(myRecord.damagetaken)} / **Death:** ${myRecord.deaths}`,
-            inline: true
-        });
-        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false });
-    } else {
-        embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false });
     }
 
-    // ランキング情報の追加
+    embed.addFields({ name: '\u200b', value: '**⚔️ 全員与ダメージランキング TOP 8**', inline: false });
+
     topPlayers.forEach((player, index) => {
-        const dps = formatNumber(Math.round(player.dps) || 0);
-        const jobCode = player.job.toUpperCase();
-        const emoji = JOB_EMOJIS[jobCode] || '❓';
-
-        let allyMark = player.ally === 'T' ? '🟢' : (player.ally === 'F' ? '🔴' : '⚪');
-
-        // ★★★ 軍師マークを追加 ★★★
-        if (player.isStrategist) {
-            allyMark = '🚩';
-        }
-
+        const emoji = JOB_EMOJIS[player.job.toUpperCase()] || '❓';
+        const allyMark = player.isStrategist ? '🚩' : (player.ally === 'T' ? '🟢' : '🔴');
         embed.addFields({
-            name: `${allyMark} ${index + 1}. ${player.name} ${emoji} [${player.job}] (DPS: ${dps})`,
+            name: `${allyMark} ${index + 1}. ${player.name} ${emoji} (DPS: ${formatNumber(Math.round(player.dps))})`,
             value: `**与ダメ:** ${formatNumber(player.damage)} | **被ダメ:** ${formatNumber(player.damagetaken)} | **デス:** ${player.deaths}`,
             inline: false
         });
